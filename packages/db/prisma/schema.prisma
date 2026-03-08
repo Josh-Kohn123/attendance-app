@@ -1,0 +1,379 @@
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "postgresql"
+  url      = env("DATABASE_URL")
+}
+
+// ─── Multi-tenant Organization ──────────────────────────────────────
+
+model Org {
+  id             String   @id @default(uuid()) @db.Uuid
+  name           String   @db.VarChar(255)
+  monthStartDay  Int      @default(1) @map("month_start_day")
+  timezone       String   @default("Asia/Jerusalem") @db.VarChar(50)
+  autoLogoutTime String?  @map("auto_logout_time") @db.VarChar(5) // HH:mm
+  autoLogoutEnabled Boolean @default(false) @map("auto_logout_enabled")
+  reminderTime   String?  @map("reminder_time") @db.VarChar(5)
+  reminderEnabled Boolean @default(false) @map("reminder_enabled")
+  createdAt      DateTime @default(now()) @map("created_at")
+  updatedAt      DateTime @updatedAt @map("updated_at")
+
+  users       User[]
+  employees   Employee[]
+  sites       Site[]
+  departments Department[]
+  holidays    Holiday[]
+  attendanceEvents AttendanceEvent[]
+  auditLogs   AuditLog[]
+  reportLocks ReportLock[]
+  exportJobs  ExportJob[]
+  leaveRequests LeaveRequest[]
+  monthlyReports MonthlyReport[]
+
+  @@map("orgs")
+}
+
+// ─── Sites & Departments ────────────────────────────────────────────
+
+model Site {
+  id        String   @id @default(uuid()) @db.Uuid
+  orgId     String   @map("org_id") @db.Uuid
+  name      String   @db.VarChar(255)
+  address   String?  @db.Text
+  isActive  Boolean  @default(true) @map("is_active")
+  createdAt DateTime @default(now()) @map("created_at")
+  updatedAt DateTime @updatedAt @map("updated_at")
+
+  org         Org          @relation(fields: [orgId], references: [id])
+  departments Department[]
+  employees   Employee[]
+  attendanceEvents AttendanceEvent[]
+
+  @@index([orgId])
+  @@map("sites")
+}
+
+model Department {
+  id        String   @id @default(uuid()) @db.Uuid
+  orgId     String   @map("org_id") @db.Uuid
+  siteId    String?  @map("site_id") @db.Uuid
+  name      String   @db.VarChar(255)
+  managerId String?  @map("manager_id") @db.Uuid
+  isActive  Boolean  @default(true) @map("is_active")
+  createdAt DateTime @default(now()) @map("created_at")
+  updatedAt DateTime @updatedAt @map("updated_at")
+
+  org        Org        @relation(fields: [orgId], references: [id])
+  site       Site?      @relation(fields: [siteId], references: [id])
+  manager    User?      @relation("DepartmentManager", fields: [managerId], references: [id])
+  employees  Employee[]
+
+  @@index([orgId])
+  @@index([siteId])
+  @@map("departments")
+}
+
+// ─── Users & Authentication ─────────────────────────────────────────
+
+model User {
+  id            String   @id @default(uuid()) @db.Uuid
+  orgId         String   @map("org_id") @db.Uuid
+  email         String   @db.VarChar(255)
+  idpSubject    String?  @map("idp_subject") @db.VarChar(255) // OAuth subject ID
+  displayName   String   @map("display_name") @db.VarChar(255)
+  avatarUrl     String?  @map("avatar_url") @db.Text
+  isActive      Boolean  @default(true) @map("is_active")
+  lastLoginAt   DateTime? @map("last_login_at")
+  createdAt     DateTime @default(now()) @map("created_at")
+  updatedAt     DateTime @updatedAt @map("updated_at")
+
+  org            Org          @relation(fields: [orgId], references: [id])
+  employee       Employee?
+  userRoles      UserRole[]
+  userScopes     UserScope[]
+  managedDepts   Department[] @relation("DepartmentManager")
+  managedEmployees Employee[] @relation("EmployeeManager")
+  createdEvents  AttendanceEvent[] @relation("EventCreator")
+  approvalReviews AttendanceEvent[] @relation("EventReviewer")
+  auditLogs      AuditLog[]
+  reportSignatures ReportSignature[]
+  reviewedMonthlyReports MonthlyReport[] @relation("MonthlyReportReviewer")
+
+  @@unique([orgId, email])
+  @@unique([idpSubject])
+  @@index([orgId])
+  @@map("users")
+}
+
+// ─── RBAC: Roles & Permissions ──────────────────────────────────────
+
+model UserRole {
+  id        String   @id @default(uuid()) @db.Uuid
+  userId    String   @map("user_id") @db.Uuid
+  role      String   @db.VarChar(50) // dev_management, admin, manager, employee
+  createdAt DateTime @default(now()) @map("created_at")
+
+  user User @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@unique([userId, role])
+  @@index([userId])
+  @@map("user_roles")
+}
+
+// ─── ABAC: Scopes ───────────────────────────────────────────────────
+
+model UserScope {
+  id         String   @id @default(uuid()) @db.Uuid
+  userId     String   @map("user_id") @db.Uuid
+  scopeType  String   @map("scope_type") @db.VarChar(20) // org, site, department, employee
+  scopeId    String   @map("scope_id") @db.Uuid
+  createdAt  DateTime @default(now()) @map("created_at")
+
+  // scopeId is polymorphic (org / site / department / employee) — no FK enforced at DB level
+  user User @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@unique([userId, scopeType, scopeId])
+  @@index([userId])
+  @@index([scopeType, scopeId])
+  @@map("user_scopes")
+}
+
+// ─── Employees (HR Profile) ─────────────────────────────────────────
+
+model Employee {
+  id             String    @id @default(uuid()) @db.Uuid
+  orgId          String    @map("org_id") @db.Uuid
+  userId         String?   @unique @map("user_id") @db.Uuid
+  email          String    @db.VarChar(255)
+  firstName      String    @map("first_name") @db.VarChar(100)
+  lastName       String    @map("last_name") @db.VarChar(100)
+  employeeNumber String?   @map("employee_number") @db.VarChar(50)
+  phone          String?   @db.VarChar(20)
+  position       String?   @db.VarChar(255)
+  departmentId   String?   @map("department_id") @db.Uuid
+  managerId      String?   @map("manager_id") @db.Uuid
+  siteId         String    @map("site_id") @db.Uuid
+  startDate      DateTime  @map("start_date") @db.Date
+  endDate        DateTime? @map("end_date") @db.Date
+  isActive       Boolean   @default(true) @map("is_active")
+  createdAt      DateTime  @default(now()) @map("created_at")
+  updatedAt      DateTime  @updatedAt @map("updated_at")
+
+  org              Org               @relation(fields: [orgId], references: [id])
+  user             User?             @relation(fields: [userId], references: [id])
+  department       Department?       @relation(fields: [departmentId], references: [id])
+  manager          User?             @relation("EmployeeManager", fields: [managerId], references: [id])
+  site             Site              @relation(fields: [siteId], references: [id])
+  attendanceEvents AttendanceEvent[]
+  positionHistory  PositionHistory[]
+  leaveRequests    LeaveRequest[]
+  monthlyReports   MonthlyReport[]
+
+  @@index([orgId])
+  @@index([siteId])
+  @@index([departmentId])
+  @@index([managerId])
+  @@map("employees")
+}
+
+// ─── Employment History ─────────────────────────────────────────────
+
+model PositionHistory {
+  id          String   @id @default(uuid()) @db.Uuid
+  employeeId  String   @map("employee_id") @db.Uuid
+  position    String   @db.VarChar(255)
+  department  String?  @db.VarChar(255)
+  site        String?  @db.VarChar(255)
+  startDate   DateTime @map("start_date") @db.Date
+  endDate     DateTime? @map("end_date") @db.Date
+  createdAt   DateTime @default(now()) @map("created_at")
+
+  employee Employee @relation(fields: [employeeId], references: [id])
+
+  @@index([employeeId])
+  @@map("position_history")
+}
+
+// ─── Attendance Events (APPEND-ONLY) ────────────────────────────────
+
+model AttendanceEvent {
+  id               String   @id @default(uuid()) @db.Uuid
+  orgId            String   @map("org_id") @db.Uuid
+  employeeId       String   @map("employee_id") @db.Uuid
+  siteId           String   @map("site_id") @db.Uuid
+  eventType        String   @map("event_type") @db.VarChar(30) // CLOCK_IN, CORRECTION_SUBMITTED, APPROVED, etc.
+  source           String   @db.VarChar(20) // MANUAL, HIKVISION, GOOGLE_CALENDAR, IMPORT, SYSTEM
+  serverTimestamp  DateTime @default(now()) @map("server_ts")
+  clientTimestamp  DateTime? @map("client_ts")
+  previousEventId  String?  @map("previous_event_id") @db.Uuid
+  createdByUserId  String   @map("created_by_user_id") @db.Uuid
+  reviewedByUserId String?  @map("reviewed_by_user_id") @db.Uuid
+  requestId        String   @map("request_id") @db.Uuid // idempotency key
+  notes            String?  @db.Text
+  payload          Json?    // flexible extra data
+
+  org           Org       @relation(fields: [orgId], references: [id])
+  employee      Employee  @relation(fields: [employeeId], references: [id])
+  site          Site      @relation(fields: [siteId], references: [id])
+  createdByUser User      @relation("EventCreator", fields: [createdByUserId], references: [id])
+  reviewedByUser User?    @relation("EventReviewer", fields: [reviewedByUserId], references: [id])
+  previousEvent AttendanceEvent? @relation("EventCorrection", fields: [previousEventId], references: [id])
+  corrections   AttendanceEvent[] @relation("EventCorrection")
+
+  @@unique([requestId]) // idempotency
+  @@index([orgId, employeeId])
+  @@index([orgId, siteId])
+  @@index([orgId, employeeId, serverTimestamp])
+  @@index([eventType])
+  @@map("attendance_events")
+}
+
+// ─── Leave Management ───────────────────────────────────────────────
+
+model LeaveRequest {
+  id           String   @id @default(uuid()) @db.Uuid
+  orgId        String   @map("org_id") @db.Uuid
+  employeeId   String   @map("employee_id") @db.Uuid
+  type         String   @db.VarChar(20) // VACATION, SICK, PERSONAL, etc.
+  startDate    DateTime @map("start_date") @db.Date
+  endDate      DateTime @map("end_date") @db.Date
+  totalDays    Int      @map("total_days")
+  reason       String?  @db.Text
+  status       String   @default("PENDING") @db.VarChar(20) // PENDING, APPROVED, REJECTED, CANCELLED
+  reviewedById String?  @map("reviewed_by_id") @db.Uuid
+  reviewedAt   DateTime? @map("reviewed_at")
+  requestId    String   @map("request_id") @db.Uuid
+  createdAt    DateTime @default(now()) @map("created_at")
+  updatedAt    DateTime @updatedAt @map("updated_at")
+
+  org      Org      @relation(fields: [orgId], references: [id])
+  employee Employee @relation(fields: [employeeId], references: [id])
+
+  @@unique([requestId])
+  @@index([orgId, employeeId])
+  @@index([orgId, status])
+  @@map("leave_requests")
+}
+
+// ─── Report Locks & Signatures ──────────────────────────────────────
+
+model ReportLock {
+  id           String   @id @default(uuid()) @db.Uuid
+  orgId        String   @map("org_id") @db.Uuid
+  month        Int
+  year         Int
+  siteId       String?  @map("site_id") @db.Uuid
+  departmentId String?  @map("department_id") @db.Uuid
+  lockedById   String   @map("locked_by_id") @db.Uuid
+  lockedAt     DateTime @default(now()) @map("locked_at")
+  isLocked     Boolean  @default(true) @map("is_locked")
+
+  org        Org               @relation(fields: [orgId], references: [id])
+  signatures ReportSignature[]
+
+  @@unique([orgId, month, year, siteId, departmentId])
+  @@map("report_locks")
+}
+
+model ReportSignature {
+  id           String   @id @default(uuid()) @db.Uuid
+  reportLockId String   @map("report_lock_id") @db.Uuid
+  signedById   String   @map("signed_by_id") @db.Uuid
+  signatureData String? @map("signature_data") @db.Text // base64
+  signedAt     DateTime @default(now()) @map("signed_at")
+
+  reportLock ReportLock @relation(fields: [reportLockId], references: [id])
+  signedBy   User       @relation(fields: [signedById], references: [id])
+
+  @@map("report_signatures")
+}
+
+// ─── Export Jobs ────────────────────────────────────────────────────
+
+model ExportJob {
+  id          String   @id @default(uuid()) @db.Uuid
+  orgId       String   @map("org_id") @db.Uuid
+  format      String   @db.VarChar(10) // EXCEL, PDF
+  status      String   @default("PENDING") @db.VarChar(20) // PENDING, PROCESSING, COMPLETED, FAILED
+  params      Json     // export parameters
+  downloadUrl String?  @map("download_url") @db.Text
+  error       String?  @db.Text
+  createdById String   @map("created_by_id") @db.Uuid
+  createdAt   DateTime @default(now()) @map("created_at")
+  completedAt DateTime? @map("completed_at")
+
+  org Org @relation(fields: [orgId], references: [id])
+
+  @@index([orgId, status])
+  @@map("export_jobs")
+}
+
+// ─── Holidays ───────────────────────────────────────────────────────
+
+model Holiday {
+  id        String   @id @default(uuid()) @db.Uuid
+  orgId     String   @map("org_id") @db.Uuid
+  name      String   @db.VarChar(255)
+  date      DateTime @db.Date
+  recurring Boolean  @default(false)
+  createdAt DateTime @default(now()) @map("created_at")
+
+  org Org @relation(fields: [orgId], references: [id])
+
+  @@index([orgId, date])
+  @@map("holidays")
+}
+
+// ─── Monthly Report Submission & Approval ────────────────────────
+
+model MonthlyReport {
+  id            String    @id @default(uuid()) @db.Uuid
+  orgId         String    @map("org_id") @db.Uuid
+  employeeId    String    @map("employee_id") @db.Uuid
+  month         Int       // 1-12
+  year          Int       // e.g. 2026
+  status        String    @default("DRAFT") @db.VarChar(20) // DRAFT, SUBMITTED, APPROVED, REJECTED
+  submittedAt   DateTime? @map("submitted_at")
+  reviewedAt    DateTime? @map("reviewed_at")
+  reviewedById  String?   @map("reviewed_by_id") @db.Uuid
+  reviewComment String?   @map("review_comment") @db.Text
+  lockedAt      DateTime? @map("locked_at")
+  createdAt     DateTime  @default(now()) @map("created_at")
+  updatedAt     DateTime  @updatedAt @map("updated_at")
+
+  org      Org      @relation(fields: [orgId], references: [id])
+  employee Employee @relation(fields: [employeeId], references: [id])
+  reviewer User?    @relation("MonthlyReportReviewer", fields: [reviewedById], references: [id])
+
+  @@unique([orgId, employeeId, month, year])
+  @@index([orgId, status])
+  @@index([status, reviewedById])
+  @@map("monthly_reports")
+}
+
+// ─── Audit Log (APPEND-ONLY) ────────────────────────────────────────
+
+model AuditLog {
+  id          String   @id @default(uuid()) @db.Uuid
+  orgId       String   @map("org_id") @db.Uuid
+  userId      String   @map("user_id") @db.Uuid
+  action      String   @db.VarChar(50) // see AUDIT_ACTIONS in shared types
+  targetType  String?  @map("target_type") @db.VarChar(50)
+  targetId    String?  @map("target_id") @db.Uuid
+  before      Json?    // state before change
+  after       Json?    // state after change
+  ipAddress   String?  @map("ip_address") @db.VarChar(45)
+  userAgent   String?  @map("user_agent") @db.Text
+  createdAt   DateTime @default(now()) @map("created_at")
+
+  org  Org  @relation(fields: [orgId], references: [id])
+  user User @relation(fields: [userId], references: [id])
+
+  @@index([orgId, createdAt])
+  @@index([orgId, userId])
+  @@index([orgId, action])
+  @@map("audit_log")
+}
