@@ -2,6 +2,12 @@ import { useState, useEffect } from "react";
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import { api } from "../../../../api/client";
 
+interface AdminUser {
+  id: string;
+  displayName: string;
+  email: string;
+}
+
 export function PoliciesPage() {
   const queryClient = useQueryClient();
 
@@ -10,9 +16,19 @@ export function PoliciesPage() {
     queryFn: () => api.get<any>("/admin/policies"),
   });
 
+  const { data: adminUsers = [] } = useQuery<AdminUser[]>({
+    queryKey: ["admin-users"],
+    queryFn: () => api.get<AdminUser[]>("/admin/admin-users"),
+  });
+
   const [form, setForm] = useState({
-    monthStartDay: 1, autoLogoutTime: "", autoLogoutEnabled: false,
-    reminderTime: "", reminderEnabled: false, timezone: "Asia/Jerusalem",
+    monthStartDay: 1,
+    autoLogoutTime: "",
+    autoLogoutEnabled: false,
+    reminderTime: "",
+    reminderEnabled: false,
+    timezone: "Asia/Jerusalem",
+    calendarDigestAdminUserId: null as string | null,
   });
 
   useEffect(() => {
@@ -24,6 +40,7 @@ export function PoliciesPage() {
         reminderTime: org.reminderTime ?? "",
         reminderEnabled: org.reminderEnabled ?? false,
         timezone: org.timezone ?? "Asia/Jerusalem",
+        calendarDigestAdminUserId: org.calendarDigestAdminUserId ?? null,
       });
     }
   }, [org]);
@@ -82,6 +99,32 @@ export function PoliciesPage() {
             </div>
             {form.reminderEnabled && (
               <input type="time" value={form.reminderTime} onChange={(e) => setForm({ ...form, reminderTime: e.target.value })} className="mt-3 rounded-lg border px-3 py-2 text-sm" />
+            )}
+          </div>
+
+          <div className="rounded-lg border p-4">
+            <p className="font-medium">Calendar Digest Admin</p>
+            <p className="mb-3 text-sm text-gray-500">
+              This admin receives the morning email listing calendar events and confirms attendance changes before they are applied.
+            </p>
+            <select
+              value={form.calendarDigestAdminUserId ?? ""}
+              onChange={(e) =>
+                setForm({ ...form, calendarDigestAdminUserId: e.target.value || null })
+              }
+              className="w-full rounded-lg border px-3 py-2 text-sm"
+            >
+              <option value="">— No admin assigned —</option>
+              {adminUsers.map((u) => (
+                <option key={u.id} value={u.id}>
+                  {u.displayName} ({u.email})
+                </option>
+              ))}
+            </select>
+            {adminUsers.length === 0 && (
+              <p className="mt-1 text-xs text-amber-600">
+                No admin users found. Assign the "admin" role to a user first.
+              </p>
             )}
           </div>
         </div>

@@ -10,3 +10,4 @@ export * from "./schemas/leave.js";
 export * from "./types/roles.js";
 export * from "./types/events.js";
 export * from "./types/api.js";
+export * from "./types/calendar-digest.js";

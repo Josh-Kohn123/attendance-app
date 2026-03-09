@@ -22,7 +22,9 @@ function getTransporter(): Transporter {
   if (useOAuth) {
     // OAuth2 method (production-recommended)
     transporter = nodemailer.createTransport({
-      service: "gmail",
+      host: "smtp.gmail.com",
+      port: 465,
+      secure: true,
       auth: {
         type: "OAuth2",
         user: process.env.GMAIL_USER!,
@@ -32,9 +34,12 @@ function getTransporter(): Transporter {
       },
     });
   } else {
-    // App Password method (simpler setup)
+    // App Password method — uses explicit smtp.gmail.com host so it works for
+    // both @gmail.com addresses and custom domains hosted on Google Workspace
     transporter = nodemailer.createTransport({
-      service: "gmail",
+      host: "smtp.gmail.com",
+      port: 465,
+      secure: true,
       auth: {
         user: process.env.GMAIL_USER!,
         pass: process.env.GMAIL_APP_PASSWORD!,

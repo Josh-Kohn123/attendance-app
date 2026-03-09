@@ -25,6 +25,7 @@ export const UpdatePolicySchema = z.object({
   reminderTime: z.string().regex(/^\d{2}:\d{2}$/).optional(),
   reminderEnabled: z.boolean().optional(),
   timezone: z.string().optional(),
+  calendarDigestAdminUserId: z.string().uuid().nullable().optional(),
 });
 
 export const CreateHolidaySchema = z.object({

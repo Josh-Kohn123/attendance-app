@@ -13,6 +13,7 @@ import { PoliciesPage } from "./routes/admin/policies/PoliciesPage";
 import { HolidaysPage } from "./routes/admin/holidays/HolidaysPage";
 import { DepartmentsPage } from "./routes/admin/departments/DepartmentsPage";
 import { AuditLogPage } from "./routes/admin/audit/AuditLogPage";
+import { CalendarDigestPage } from "./routes/digest/CalendarDigestPage";
 
 export function App() {
   const { user, isLoading } = useAuth();
@@ -31,6 +32,8 @@ export function App() {
         <Route path="/login" element={<LoginPage />} />
         <Route path="/auth/callback" element={<AuthCallback />} />
         <Route path="/not-registered" element={<NotRegisteredPage />} />
+        {/* Public token-authenticated route — no login required */}
+        <Route path="/digest/:token" element={<CalendarDigestPage />} />
         <Route path="*" element={<Navigate to="/login" replace />} />
       </Routes>
     );
@@ -56,6 +59,8 @@ export function App() {
         <Route path="/admin/departments" element={<DepartmentsPage />} />
         <Route path="/admin/audit" element={<AuditLogPage />} />
       </Route>
+      {/* Public token-authenticated route — works whether logged in or not */}
+      <Route path="/digest/:token" element={<CalendarDigestPage />} />
       <Route path="*" element={<Navigate to="/" replace />} />
     </Routes>
   );

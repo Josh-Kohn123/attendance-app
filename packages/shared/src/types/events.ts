@@ -57,6 +57,7 @@ export const AUDIT_ACTIONS = [
   "MONTHLY_REPORT_SUBMITTED",
   "MONTHLY_REPORT_APPROVED",
   "MONTHLY_REPORT_REJECTED",
+  "DAILY_ATTENDANCE_PROCESSED",
 ] as const;
 
 export type AuditAction = (typeof AUDIT_ACTIONS)[number];

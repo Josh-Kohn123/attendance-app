@@ -173,6 +173,22 @@ export async function adminRoutes(app: FastifyInstance) {
     }
   );
 
+  // ─── Admin users list (for calendar digest dropdown) ──────────
+
+  app.get(
+    "/admin-users",
+    { preHandler: [requirePermission("admin.policies")] },
+    async (request) => {
+      // Return all users in the org who have the admin role
+      const adminRoles = await prisma.userRole.findMany({
+        where: { role: "admin", user: { orgId: request.currentOrgId! } },
+        include: { user: { select: { id: true, displayName: true, email: true } } },
+      });
+
+      return { ok: true, data: adminRoles.map((r) => r.user) };
+    }
+  );
+
   // ─── Roles Management ─────────────────────────────────────────
 
   app.post(

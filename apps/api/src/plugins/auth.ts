@@ -20,7 +20,7 @@ async function authPluginImpl(app: FastifyInstance) {
 
   app.addHook("onRequest", async (request: FastifyRequest) => {
     // Skip auth for public routes
-    const publicPaths = ["/health", "/auth/google", "/auth/google/callback"];
+    const publicPaths = ["/health", "/auth/google", "/auth/google/callback", "/calendar-digest"];
     if (publicPaths.some((p) => request.url.startsWith(p))) return;
 
     try {
