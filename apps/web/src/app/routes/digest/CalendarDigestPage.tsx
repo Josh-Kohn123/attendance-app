@@ -55,10 +55,12 @@ async function submitDigest(
 
 const STATUS_OPTIONS = [
   { value: "SICK", label: "Sick" },
+  { value: "CHILD_SICK", label: "Child Sick" },
   { value: "VACATION", label: "Vacation" },
   { value: "RESERVES", label: "Reserves (Miluim)" },
   { value: "HALF_DAY", label: "Half Day" },
   { value: "PRESENT", label: "Present" },
+  { value: "WORK_FROM_HOME", label: "Work From Home" },
 ];
 
 // ─── Match type badge ─────────────────────────────────────────────────

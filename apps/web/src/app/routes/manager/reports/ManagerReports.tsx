@@ -3,7 +3,7 @@ import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import { useNavigate } from "react-router-dom";
 import { api } from "../../../../api/client";
 import dayjs from "dayjs";
-import { FileText, FileSpreadsheet, CheckCircle, Clock, AlertCircle, User, PenLine } from "lucide-react";
+import { CheckCircle, Clock, AlertCircle, User, PenLine } from "lucide-react";
 
 /* ── helpers ─────────────────────────────────────────────────────── */
 
@@ -31,27 +31,6 @@ function ReportStatusBadge({ status }: { status: string }) {
   );
 }
 
-async function downloadReport(format: "EXCEL" | "PDF", from: string, to: string) {
-  const token = localStorage.getItem("auth_token");
-  const res = await fetch(`/api/reports/download?format=${format}&from=${from}&to=${to}`, {
-    headers: token ? { Authorization: `Bearer ${token}` } : {},
-  });
-  if (!res.ok) {
-    const json = await res.json().catch(() => null);
-    throw new Error(json?.error?.message ?? "Download failed");
-  }
-  const blob = await res.blob();
-  const ext = format === "EXCEL" ? "xlsx" : "pdf";
-  const url = URL.createObjectURL(blob);
-  const a = document.createElement("a");
-  a.href = url;
-  a.download = `attendance-report-${from}-to-${to}.${ext}`;
-  document.body.appendChild(a);
-  a.click();
-  a.remove();
-  URL.revokeObjectURL(url);
-}
-
 /* ── component ───────────────────────────────────────────────────── */
 
 export function ManagerReports() {
@@ -62,9 +41,6 @@ export function ManagerReports() {
   const to = month.endOf("month").format("YYYY-MM-DD");
   const m = month.month() + 1;
   const y = month.year();
-
-  const [downloading, setDownloading] = useState<string | null>(null);
-  const [downloadError, setDownloadError] = useState<string | null>(null);
 
   /* attendance data */
   const { data: report, isLoading: loadingReport } = useQuery({
@@ -112,18 +88,6 @@ export function ManagerReports() {
     },
   });
 
-  async function handleExport(format: "EXCEL" | "PDF") {
-    setDownloading(format);
-    setDownloadError(null);
-    try {
-      await downloadReport(format, from, to);
-    } catch (err: any) {
-      setDownloadError(err?.message ?? "Download failed");
-    } finally {
-      setDownloading(null);
-    }
-  }
-
   return (
     <div className="mx-auto max-w-6xl">
       {/* Header + month nav */}
@@ -134,21 +98,6 @@ export function ManagerReports() {
           <button onClick={() => setMonth(dayjs().startOf("month"))} className="rounded-lg border px-3 py-1 text-sm hover:bg-gray-50">This month</button>
           <button onClick={() => setMonth((m) => m.add(1, "month"))} className="rounded-lg border px-3 py-1 text-sm hover:bg-gray-50">&rarr;</button>
         </div>
-      </div>
-
-      {/* Export buttons */}
-      <div className="mb-4 flex items-center gap-2">
-        <button onClick={() => handleExport("EXCEL")} disabled={!!downloading}
-          className="flex items-center gap-2 rounded-lg border bg-white px-4 py-2 text-sm font-medium hover:bg-gray-50 disabled:opacity-50">
-          <FileSpreadsheet size={16} className="text-green-600" />
-          {downloading === "EXCEL" ? "Downloading..." : "Download Excel"}
-        </button>
-        <button onClick={() => handleExport("PDF")} disabled={!!downloading}
-          className="flex items-center gap-2 rounded-lg border bg-white px-4 py-2 text-sm font-medium hover:bg-gray-50 disabled:opacity-50">
-          <FileText size={16} className="text-red-600" />
-          {downloading === "PDF" ? "Downloading..." : "Download PDF"}
-        </button>
-        {downloadError && <span className="text-sm text-red-600">{downloadError}</span>}
       </div>
 
       {/* Self-report approval banner */}
@@ -194,9 +143,11 @@ export function ManagerReports() {
                 <th className="p-3 font-medium text-center">Total</th>
                 <th className="p-3 font-medium text-center">Present</th>
                 <th className="p-3 font-medium text-center">Sick</th>
+                <th className="p-3 font-medium text-center">Child Sick</th>
                 <th className="p-3 font-medium text-center">Vacation</th>
                 <th className="p-3 font-medium text-center">Reserves</th>
                 <th className="p-3 font-medium text-center">Half Day</th>
+                <th className="p-3 font-medium text-center">WFH</th>
                 <th className="p-3 font-medium text-center">Report Status</th>
                 <th className="p-3 font-medium text-center">Actions</th>
               </tr>
@@ -213,9 +164,11 @@ export function ManagerReports() {
                   </td>
                   <td className="p-3 text-center"><StatBadge count={row.present ?? 0} cls="bg-green-100 text-green-700" /></td>
                   <td className="p-3 text-center"><StatBadge count={row.sick ?? 0} cls="bg-amber-100 text-amber-700" /></td>
+                  <td className="p-3 text-center"><StatBadge count={row.childSick ?? 0} cls="bg-rose-100 text-rose-700" /></td>
                   <td className="p-3 text-center"><StatBadge count={row.vacation ?? 0} cls="bg-blue-100 text-blue-700" /></td>
                   <td className="p-3 text-center"><StatBadge count={row.reserves ?? 0} cls="bg-purple-100 text-purple-700" /></td>
                   <td className="p-3 text-center"><StatBadge count={row.halfDay ?? 0} cls="bg-orange-100 text-orange-700" /></td>
+                  <td className="p-3 text-center"><StatBadge count={row.workFromHome ?? 0} cls="bg-teal-100 text-teal-700" /></td>
                   <td className="p-3 text-center">
                     <ReportStatusBadge status={row.status ?? "DRAFT"} />
                   </td>

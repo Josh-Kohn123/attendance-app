@@ -3,9 +3,11 @@
 export const DAY_STATUSES = [
   "PRESENT",
   "SICK",
+  "CHILD_SICK",
   "VACATION",
   "RESERVES",
   "HALF_DAY",
+  "WORK_FROM_HOME",
 ] as const;
 
 export type DayStatus = (typeof DAY_STATUSES)[number];

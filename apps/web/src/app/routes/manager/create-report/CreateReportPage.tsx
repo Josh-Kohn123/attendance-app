@@ -20,18 +20,20 @@ import dayjs from "dayjs";
 
 // ─── Types & Constants ──────────────────────────────────────────────────────
 
-type DayStatus = "PRESENT" | "SICK" | "VACATION" | "RESERVES" | "HALF_DAY";
+type DayStatus = "PRESENT" | "SICK" | "CHILD_SICK" | "VACATION" | "RESERVES" | "HALF_DAY" | "WORK_FROM_HOME";
 type ReportStatus = "DRAFT" | "SUBMITTED" | "APPROVED" | "REJECTED";
 
 const STATUS_CONFIG: Record<
   DayStatus,
   { label: string; bg: string; text: string; dot: string; border: string }
 > = {
-  PRESENT:  { label: "Present",  bg: "bg-green-100",  text: "text-green-800",  dot: "bg-green-500",  border: "border-green-300"  },
-  SICK:     { label: "Sick",     bg: "bg-amber-100",  text: "text-amber-800",  dot: "bg-amber-500",  border: "border-amber-300"  },
-  VACATION: { label: "Vacation", bg: "bg-sky-100",    text: "text-sky-800",    dot: "bg-sky-500",    border: "border-sky-300"    },
-  RESERVES: { label: "Reserves", bg: "bg-purple-100", text: "text-purple-800", dot: "bg-purple-500", border: "border-purple-300" },
-  HALF_DAY: { label: "Half-Day", bg: "bg-orange-100", text: "text-orange-800", dot: "bg-orange-500", border: "border-orange-300" },
+  PRESENT:        { label: "Present",        bg: "bg-green-100",  text: "text-green-800",  dot: "bg-green-500",  border: "border-green-300"  },
+  SICK:           { label: "Sick",           bg: "bg-amber-100",  text: "text-amber-800",  dot: "bg-amber-500",  border: "border-amber-300"  },
+  CHILD_SICK:     { label: "Child Sick",     bg: "bg-rose-100",   text: "text-rose-800",   dot: "bg-rose-500",   border: "border-rose-300"   },
+  VACATION:       { label: "Vacation",       bg: "bg-sky-100",    text: "text-sky-800",    dot: "bg-sky-500",    border: "border-sky-300"    },
+  RESERVES:       { label: "Reserves",       bg: "bg-purple-100", text: "text-purple-800", dot: "bg-purple-500", border: "border-purple-300" },
+  HALF_DAY:       { label: "Half-Day",       bg: "bg-orange-100", text: "text-orange-800", dot: "bg-orange-500", border: "border-orange-300" },
+  WORK_FROM_HOME: { label: "WFH",           bg: "bg-teal-100",   text: "text-teal-800",   dot: "bg-teal-500",   border: "border-teal-300"   },
 };
 
 const DEFAULT_SITE_ID = "00000000-0000-0000-0000-000000000010";

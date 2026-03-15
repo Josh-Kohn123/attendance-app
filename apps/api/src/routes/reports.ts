@@ -15,9 +15,11 @@ const HEBREW_DAYS = ["יום א", "יום ב", "יום ג", "יום ד", "יום
 const STATUS_EVENT_LABEL: Record<string, string> = {
   PRESENT: "Present",
   SICK: "Sick",
+  CHILD_SICK: "Child Sick",
   VACATION: "Vacation",
   RESERVES: "Military service",
   HALF_DAY: "Half Day",
+  WORK_FROM_HOME: "Work From Home",
 };
 
 /** Check if a date is an Israeli weekend (Fri=5, Sat=6) */
@@ -61,21 +63,23 @@ export async function reportRoutes(app: FastifyInstance) {
       });
 
       // Group by employee and status (stored in notes field)
-      const eventsByEmployee = new Map<string, { total: number; present: number; sick: number; vacation: number; reserves: number; halfDay: number }>();
+      const eventsByEmployee = new Map<string, { total: number; present: number; sick: number; childSick: number; vacation: number; reserves: number; halfDay: number; workFromHome: number }>();
       for (const event of events) {
-        const existing = eventsByEmployee.get(event.employeeId) ?? { total: 0, present: 0, sick: 0, vacation: 0, reserves: 0, halfDay: 0 };
+        const existing = eventsByEmployee.get(event.employeeId) ?? { total: 0, present: 0, sick: 0, childSick: 0, vacation: 0, reserves: 0, halfDay: 0, workFromHome: 0 };
         const status = ((event.notes as string) ?? "PRESENT").toUpperCase();
         existing.total += 1;
         if (status === "SICK") existing.sick += 1;
+        else if (status === "CHILD_SICK") existing.childSick += 1;
         else if (status === "VACATION") existing.vacation += 1;
         else if (status === "RESERVES") existing.reserves += 1;
         else if (status === "HALF_DAY") existing.halfDay += 1;
+        else if (status === "WORK_FROM_HOME") existing.workFromHome += 1;
         else existing.present += 1; // PRESENT or anything unrecognised
         eventsByEmployee.set(event.employeeId, existing);
       }
 
       const summary = employees.map((emp) => {
-        const counts = eventsByEmployee.get(emp.id) ?? { total: 0, present: 0, sick: 0, vacation: 0, reserves: 0, halfDay: 0 };
+        const counts = eventsByEmployee.get(emp.id) ?? { total: 0, present: 0, sick: 0, childSick: 0, vacation: 0, reserves: 0, halfDay: 0, workFromHome: 0 };
         return {
           employeeId: emp.id,
           name: `${emp.firstName} ${emp.lastName}`,
@@ -84,9 +88,11 @@ export async function reportRoutes(app: FastifyInstance) {
           totalDays: counts.total,
           present: counts.present,
           sick: counts.sick,
+          childSick: counts.childSick,
           vacation: counts.vacation,
           reserves: counts.reserves,
           halfDay: counts.halfDay,
+          workFromHome: counts.workFromHome,
         };
       });
 
@@ -189,15 +195,17 @@ export async function reportRoutes(app: FastifyInstance) {
       }
 
       // Also build summary counts per employee
-      const empSummary = new Map<string, { total: number; present: number; sick: number; vacation: number; reserves: number; halfDay: number }>();
+      const empSummary = new Map<string, { total: number; present: number; sick: number; childSick: number; vacation: number; reserves: number; halfDay: number; workFromHome: number }>();
       for (const ev of events) {
-        const c = empSummary.get(ev.employeeId) ?? { total: 0, present: 0, sick: 0, vacation: 0, reserves: 0, halfDay: 0 };
+        const c = empSummary.get(ev.employeeId) ?? { total: 0, present: 0, sick: 0, childSick: 0, vacation: 0, reserves: 0, halfDay: 0, workFromHome: 0 };
         const status = ((ev.notes as string) ?? "PRESENT").toUpperCase();
         c.total += 1;
         if (status === "SICK") c.sick += 1;
+        else if (status === "CHILD_SICK") c.childSick += 1;
         else if (status === "VACATION") c.vacation += 1;
         else if (status === "RESERVES") c.reserves += 1;
         else if (status === "HALF_DAY") c.halfDay += 1;
+        else if (status === "WORK_FROM_HOME") c.workFromHome += 1;
         else c.present += 1;
         empSummary.set(ev.employeeId, c);
       }
@@ -301,7 +309,7 @@ export async function reportRoutes(app: FastifyInstance) {
         let totalReserves = 0;
 
         for (const emp of employees) {
-          const c = empSummary.get(emp.id) ?? { total: 0, present: 0, sick: 0, vacation: 0, reserves: 0, halfDay: 0 };
+          const c = empSummary.get(emp.id) ?? { total: 0, present: 0, sick: 0, childSick: 0, vacation: 0, reserves: 0, halfDay: 0, workFromHome: 0 };
           const attendanceDays = c.total;
           const attendanceHours = `${String(c.present * 8 + c.halfDay * 4).padStart(1, "0")}:00`;
 
@@ -314,10 +322,10 @@ export async function reportRoutes(app: FastifyInstance) {
             (emp as any).employeeNumber ?? "",
             attendanceDays,
             attendanceHours,
-            "", // Work from home (not tracked separately yet)
+            c.workFromHome > 0 ? String(c.workFromHome) + ".0" : "",
             c.vacation > 0 ? String(c.vacation) + ".0" : "",
             c.reserves > 0 ? String(c.reserves) + ".0" : "",
-            "", // Child sick (not tracked separately yet)
+            c.childSick > 0 ? String(c.childSick) + ".0" : "",
             "", // Empty column I
             c.vacation,
             c.sick,
@@ -436,9 +444,9 @@ export async function reportRoutes(app: FastifyInstance) {
           doc.font("Helvetica").fontSize(8);
           for (const emp of employees) {
             if (y > 540) { doc.addPage(); y = 40; }
-            const c = empSummary.get(emp.id) ?? { total: 0, present: 0, sick: 0, vacation: 0, reserves: 0, halfDay: 0 };
+            const c = empSummary.get(emp.id) ?? { total: 0, present: 0, sick: 0, childSick: 0, vacation: 0, reserves: 0, halfDay: 0, workFromHome: 0 };
             const hrs = `${c.present * 8 + c.halfDay * 4}:00`;
-            const vals = [`${emp.lastName} ${emp.firstName}`, String(c.total), hrs, String(c.vacation), String(c.sick), String(c.reserves), String(c.halfDay)];
+            const vals = [`${emp.lastName} ${emp.firstName}`, String(c.total), hrs, String(c.vacation), String(c.sick), String(c.reserves), String(c.halfDay), String(c.childSick), String(c.workFromHome)];
             x = startX;
             for (let i = 0; i < vals.length; i++) {
               doc.text(vals[i], x, y, { width: sumWidths[i], align: "left" });
