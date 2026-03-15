@@ -9,6 +9,32 @@ import {
 import { email } from "../services/email.js";
 import { auditLog } from "../services/audit.js";
 
+/**
+ * Helper: check if the current user can manage reports for a given employee.
+ * Admins can manage all employees; managers can manage their direct reports only.
+ */
+async function canManageEmployee(request: any, employeeId: string) {
+  const ctx = request.authzContext!;
+  const employee = await prisma.employee.findFirst({
+    where: { id: employeeId, orgId: request.currentOrgId!, isActive: true },
+    include: {
+      manager: { select: { id: true, email: true, displayName: true } },
+      department: { select: { name: true } },
+    },
+  });
+  if (!employee) return { allowed: false as const, employee: null };
+
+  // Admins can manage all employees
+  if (ctx.roles.includes("admin")) return { allowed: true as const, employee };
+
+  // Managers can manage their direct reports
+  if (ctx.roles.includes("manager") && employee.managerId === request.currentUserId) {
+    return { allowed: true as const, employee };
+  }
+
+  return { allowed: false as const, employee: null };
+}
+
 export async function monthlyReportRoutes(app: FastifyInstance) {
   /**
    * GET /monthly-reports/status?month=X&year=Y — Get own report status for a month
@@ -478,6 +504,170 @@ export async function monthlyReportRoutes(app: FastifyInstance) {
       await auditLog(request, "MONTHLY_REPORT_REJECTED", "monthly_report", id, { status: "SUBMITTED" }, { status: "REJECTED", comment: parsed.data.comment });
 
       return { ok: true, data: updated };
+    }
+  );
+
+  // ──────────────────────────────────────────────────────────────────────────
+  // Proxy endpoints — admin/manager creates & submits reports on behalf of employees
+  // ──────────────────────────────────────────────────────────────────────────
+
+  /**
+   * GET /monthly-reports/status/:employeeId?month=X&year=Y — Get report status for a specific employee
+   */
+  app.get(
+    "/status/:employeeId",
+    { preHandler: [requirePermission("reports.review")] },
+    async (request, reply) => {
+      const { employeeId } = request.params as { employeeId: string };
+      const { month, year } = request.query as { month?: string; year?: string };
+      const m = Number(month);
+      const y = Number(year);
+      if (!m || !y || m < 1 || m > 12 || y < 2020) {
+        return reply.status(400).send({ ok: false, error: { code: "VALIDATION", message: "month (1-12) and year required" } });
+      }
+
+      const { allowed, employee } = await canManageEmployee(request, employeeId);
+      if (!allowed || !employee) {
+        return reply.status(403).send({ ok: false, error: { code: "FORBIDDEN", message: "You cannot access this employee's report" } });
+      }
+
+      const report = await prisma.monthlyReport.findUnique({
+        where: {
+          orgId_employeeId_month_year: {
+            orgId: request.currentOrgId!,
+            employeeId,
+            month: m,
+            year: y,
+          },
+        },
+        include: {
+          reviewer: { select: { displayName: true } },
+        },
+      });
+
+      return {
+        ok: true,
+        data: report
+          ? {
+              id: report.id,
+              status: report.status,
+              submittedAt: report.submittedAt,
+              reviewedAt: report.reviewedAt,
+              reviewerName: report.reviewer?.displayName ?? null,
+              reviewComment: report.reviewComment,
+              lockedAt: report.lockedAt,
+            }
+          : {
+              id: null,
+              status: "DRAFT",
+              submittedAt: null,
+              reviewedAt: null,
+              reviewerName: null,
+              reviewComment: null,
+              lockedAt: null,
+            },
+      };
+    }
+  );
+
+  /**
+   * POST /monthly-reports/submit-for — Submit a monthly report on behalf of an employee
+   * Body: { employeeId, month, year }
+   */
+  app.post(
+    "/submit-for",
+    { preHandler: [requirePermission("reports.review")] },
+    async (request, reply) => {
+      const body = request.body as { employeeId?: string; month?: number; year?: number };
+      const employeeId = body.employeeId;
+      const month = body.month;
+      const year = body.year;
+
+      if (!employeeId || !month || !year || month < 1 || month > 12 || year < 2020) {
+        return reply.status(400).send({ ok: false, error: { code: "VALIDATION", message: "employeeId, month (1-12) and year required" } });
+      }
+
+      const { allowed, employee } = await canManageEmployee(request, employeeId);
+      if (!allowed || !employee) {
+        return reply.status(403).send({ ok: false, error: { code: "FORBIDDEN", message: "You cannot submit reports for this employee" } });
+      }
+
+      // Resolve the manager — the person the report is sent to for review.
+      // When the admin/manager creates the report, the report's manager is the employee's assigned manager.
+      // If the current user IS the employee's manager, the report effectively self-submits.
+      const resolvedManager: { id: string; email: string; displayName: string } | null =
+        (employee as any).manager ?? null;
+
+      // Check current report status
+      const existing = await prisma.monthlyReport.findUnique({
+        where: {
+          orgId_employeeId_month_year: {
+            orgId: request.currentOrgId!,
+            employeeId,
+            month,
+            year,
+          },
+        },
+      });
+
+      if (existing && !["DRAFT", "REJECTED"].includes(existing.status)) {
+        return reply.status(400).send({
+          ok: false,
+          error: { code: "INVALID_STATUS", message: `Cannot submit — report is already ${existing.status.toLowerCase()}` },
+        });
+      }
+
+      // Upsert the report as SUBMITTED
+      const report = await prisma.monthlyReport.upsert({
+        where: {
+          orgId_employeeId_month_year: {
+            orgId: request.currentOrgId!,
+            employeeId,
+            month,
+            year,
+          },
+        },
+        update: {
+          status: "SUBMITTED",
+          submittedAt: new Date(),
+          reviewedAt: null,
+          reviewedById: null,
+          reviewComment: null,
+        },
+        create: {
+          orgId: request.currentOrgId!,
+          employeeId,
+          month,
+          year,
+          status: "SUBMITTED",
+          submittedAt: new Date(),
+        },
+      });
+
+      // Notify manager (unless submitter is the manager themselves)
+      if (resolvedManager && resolvedManager.id !== request.currentUserId) {
+        email.notifyMonthlyReportSubmitted({
+          orgId: request.currentOrgId!,
+          managerEmail: resolvedManager.email,
+          managerName: resolvedManager.displayName,
+          employeeName: `${employee.firstName} ${employee.lastName}`,
+          month,
+          year,
+        }).catch((err: any) => {
+          console.error("[monthly-reports] Failed to send submission email:", err?.message ?? err);
+        });
+      }
+
+      await auditLog(
+        request,
+        "MONTHLY_REPORT_SUBMITTED",
+        "monthly_report",
+        report.id,
+        null,
+        { month, year, status: "SUBMITTED", submittedByProxy: true, onBehalfOf: employeeId }
+      );
+
+      return { ok: true, data: report };
     }
   );
 }

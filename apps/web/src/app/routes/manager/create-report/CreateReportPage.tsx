@@ -1,5 +1,6 @@
 import { useState, useMemo } from "react";
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
+import { useParams, useSearchParams, useNavigate } from "react-router-dom";
 import { api } from "../../../../api/client";
 import {
   ChevronLeft,
@@ -12,6 +13,7 @@ import {
   AlertCircle,
   Clock,
   CheckCircle,
+  ArrowLeft,
 } from "lucide-react";
 import clsx from "clsx";
 import dayjs from "dayjs";
@@ -112,16 +114,10 @@ function BulkPanel({
           {count} day{count !== 1 ? "s" : ""} selected
         </span>
         <div className="flex gap-2">
-          <button
-            onClick={onClear}
-            className="text-xs text-blue-600 underline hover:text-blue-800"
-          >
+          <button onClick={onClear} className="text-xs text-blue-600 underline hover:text-blue-800">
             Clear selection
           </button>
-          <button
-            onClick={onCancel}
-            className="text-xs text-gray-500 underline hover:text-gray-700"
-          >
+          <button onClick={onCancel} className="text-xs text-gray-500 underline hover:text-gray-700">
             Exit multi-select
           </button>
         </div>
@@ -158,10 +154,12 @@ function ReportBanner({
   reportStatus,
   onSubmit,
   isSubmitting,
+  employeeName,
 }: {
   reportStatus: { status: ReportStatus; reviewerName?: string | null; reviewComment?: string | null };
   onSubmit: () => void;
   isSubmitting: boolean;
+  employeeName: string;
 }) {
   const st = reportStatus.status;
 
@@ -171,7 +169,7 @@ function ReportBanner({
         <div className="flex items-center gap-2">
           <Send size={16} className="text-gray-400" />
           <span className="text-sm text-gray-600">
-            Report not yet submitted. Fill in your attendance and submit when ready.
+            Fill in attendance for <strong>{employeeName}</strong> and submit when ready.
           </span>
         </div>
         <button
@@ -192,7 +190,7 @@ function ReportBanner({
         <Clock size={18} className="flex-shrink-0 text-blue-500" />
         <div>
           <p className="text-sm font-medium text-blue-800">Awaiting manager approval</p>
-          <p className="text-xs text-blue-600">Your report has been submitted and is pending review. Calendar is locked until reviewed.</p>
+          <p className="text-xs text-blue-600">Report for {employeeName} has been submitted and is pending review. Calendar is locked.</p>
         </div>
       </div>
     );
@@ -219,7 +217,7 @@ function ReportBanner({
         <div className="flex items-start gap-3">
           <AlertCircle size={18} className="mt-0.5 flex-shrink-0 text-red-500" />
           <div className="flex-1">
-            <p className="text-sm font-medium text-red-800">Corrections needed</p>
+            <p className="text-sm font-medium text-red-800">Corrections needed for {employeeName}</p>
             {reportStatus.reviewComment && (
               <div className="mt-2 rounded-lg border border-red-200 bg-white p-3">
                 <p className="text-xs text-gray-500">
@@ -228,7 +226,7 @@ function ReportBanner({
                 <p className="mt-0.5 text-sm text-red-700">"{reportStatus.reviewComment}"</p>
               </div>
             )}
-            <p className="mt-2 text-xs text-red-600">Please update your calendar and resubmit.</p>
+            <p className="mt-2 text-xs text-red-600">Please update the calendar and resubmit.</p>
           </div>
           <button
             onClick={onSubmit}
@@ -286,33 +284,52 @@ function ConfirmDialog({
   );
 }
 
-// ─── Main Calendar Page ───────────────────────────────────────────────────────
+// ─── Main Create Report Page ────────────────────────────────────────────────
 
-export function CalendarPage() {
-  const [currentMonth, setCurrentMonth] = useState(dayjs().startOf("month"));
+export function CreateReportPage() {
+  const { employeeId } = useParams<{ employeeId: string }>();
+  const [searchParams] = useSearchParams();
+  const navigate = useNavigate();
+  const queryClient = useQueryClient();
+
+  const initialMonth = Number(searchParams.get("month")) || dayjs().month() + 1;
+  const initialYear = Number(searchParams.get("year")) || dayjs().year();
+
+  const [currentMonth, setCurrentMonth] = useState(
+    dayjs().year(initialYear).month(initialMonth - 1).startOf("month")
+  );
   const [multiSelectMode, setMultiSelectMode] = useState(false);
   const [selectedDates, setSelectedDates] = useState<Set<string>>(new Set());
   const [openPickerDate, setOpenPickerDate] = useState<string | null>(null);
   const [showConfirm, setShowConfirm] = useState(false);
-  const queryClient = useQueryClient();
 
-  const monthNum = currentMonth.month() + 1; // dayjs months are 0-indexed
+  const monthNum = currentMonth.month() + 1;
   const yearNum = currentMonth.year();
   const from = currentMonth.format("YYYY-MM-DD");
   const to = currentMonth.endOf("month").format("YYYY-MM-DD");
 
-  // ── Fetch attendance ──
+  // ── Fetch employee info from team status ──
+  const { data: teamStatus } = useQuery({
+    queryKey: ["monthly-reports", "team-status", monthNum, yearNum],
+    queryFn: () => api.get<any>(`/monthly-reports/team-status?month=${monthNum}&year=${yearNum}`),
+  });
+  const statusItems: any[] = (teamStatus as any)?.data ?? teamStatus ?? [];
+  const employeeInfo = statusItems.find((i: any) => i.employeeId === employeeId);
+  const employeeName = employeeInfo?.employeeName ?? "Employee";
+
+  // ── Fetch attendance for this employee ──
   const { data: attendance } = useQuery({
-    queryKey: ["attendance", "self", from, to],
+    queryKey: ["attendance", "employee", employeeId, from, to],
     queryFn: () =>
       api.get<{ items: Array<{ serverTimestamp: string; notes: string | null }> }>(
-        `/attendance/self?from=${from}&to=${to}&limit=100`
+        `/attendance/employee/${employeeId}?from=${from}&to=${to}&limit=100`
       ),
+    enabled: !!employeeId,
   });
 
-  // ── Fetch report status for this month ──
+  // ── Fetch report status for this employee ──
   const { data: reportStatus } = useQuery({
-    queryKey: ["monthly-reports", "status", monthNum, yearNum],
+    queryKey: ["monthly-reports", "status", employeeId, monthNum, yearNum],
     queryFn: () =>
       api.get<{
         id: string | null;
@@ -322,13 +339,11 @@ export function CalendarPage() {
         reviewerName: string | null;
         reviewComment: string | null;
         lockedAt: string | null;
-        noEmployeeRecord?: boolean;
-      }>(`/monthly-reports/status?month=${monthNum}&year=${yearNum}`),
-    // Never throw — fall back to showing the DRAFT state (submit will show an error if needed)
+      }>(`/monthly-reports/status/${employeeId}?month=${monthNum}&year=${yearNum}`),
+    enabled: !!employeeId,
     retry: false,
   });
 
-  // Default to DRAFT so the Submit button always shows even if the query failed
   const effectiveStatus: ReportStatus = reportStatus?.status ?? "DRAFT";
   const isEditable = ["DRAFT", "REJECTED"].includes(effectiveStatus);
 
@@ -346,10 +361,10 @@ export function CalendarPage() {
     return map;
   }, [attendance]);
 
-  // ── Single-day mutation ──
+  // ── Single-day mutation (proxy) ──
   const setEntry = useMutation({
     mutationFn: (payload: { date: string; status: DayStatus }) =>
-      api.post("/attendance/calendar-entry", {
+      api.post(`/attendance/employee/${employeeId}/calendar-entry`, {
         date: payload.date,
         status: payload.status,
         siteId: DEFAULT_SITE_ID,
@@ -357,42 +372,46 @@ export function CalendarPage() {
         requestId: crypto.randomUUID(),
       }),
     onSuccess: () => {
-      queryClient.invalidateQueries({ queryKey: ["attendance"] });
+      queryClient.invalidateQueries({ queryKey: ["attendance", "employee", employeeId] });
       setOpenPickerDate(null);
     },
   });
 
-  // ── Clear single day ──
+  // ── Clear single day (proxy) ──
   const clearEntry = useMutation({
     mutationFn: (date: string) =>
-      api.delete(`/attendance/calendar-entry?date=${date}`),
+      api.delete(`/attendance/employee/${employeeId}/calendar-entry?date=${date}`),
     onSuccess: () => {
-      queryClient.invalidateQueries({ queryKey: ["attendance"] });
+      queryClient.invalidateQueries({ queryKey: ["attendance", "employee", employeeId] });
       setOpenPickerDate(null);
     },
   });
 
-  // ── Bulk mutation ──
+  // ── Bulk mutation (proxy) ──
   const bulkSet = useMutation({
     mutationFn: (payload: { dates: string[]; status: DayStatus }) =>
-      api.post("/attendance/calendar-bulk", {
+      api.post(`/attendance/employee/${employeeId}/calendar-bulk`, {
         dates: payload.dates,
         status: payload.status,
         siteId: DEFAULT_SITE_ID,
         source: "MANUAL",
       }),
     onSuccess: () => {
-      queryClient.invalidateQueries({ queryKey: ["attendance"] });
+      queryClient.invalidateQueries({ queryKey: ["attendance", "employee", employeeId] });
       setSelectedDates(new Set());
     },
   });
 
   const [submitError, setSubmitError] = useState<string | null>(null);
 
-  // ── Submit report mutation ──
+  // ── Submit report on behalf of employee ──
   const submitReport = useMutation({
     mutationFn: () =>
-      api.post("/monthly-reports/submit", { month: monthNum, year: yearNum }),
+      api.post("/monthly-reports/submit-for", {
+        employeeId,
+        month: monthNum,
+        year: yearNum,
+      }),
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ["monthly-reports"] });
       setShowConfirm(false);
@@ -407,7 +426,7 @@ export function CalendarPage() {
 
   // ── Calendar grid ──
   const daysInMonth = currentMonth.daysInMonth();
-  const startDay = currentMonth.day(); // 0=Sun
+  const startDay = currentMonth.day();
   const days = useMemo(() => {
     const arr: (dayjs.Dayjs | null)[] = [];
     for (let i = 0; i < startDay; i++) arr.push(null);
@@ -417,7 +436,7 @@ export function CalendarPage() {
 
   const isToday = (d: dayjs.Dayjs) => d.isSame(dayjs(), "day");
   const isFuture = (d: dayjs.Dayjs) => d.isAfter(dayjs(), "day");
-  const isWeekend = (d: dayjs.Dayjs) => d.day() === 5 || d.day() === 6; // Fri=5, Sat=6 (Israeli weekend)
+  const isWeekend = (d: dayjs.Dayjs) => d.day() === 5 || d.day() === 6;
 
   function handleDayClick(dateStr: string) {
     if (!isEditable) return;
@@ -445,12 +464,32 @@ export function CalendarPage() {
 
   return (
     <div className="mx-auto max-w-2xl">
+      {/* Back button */}
+      <button
+        onClick={() => navigate("/manager/reports")}
+        className="mb-4 flex items-center gap-1.5 text-sm text-gray-500 hover:text-gray-700"
+      >
+        <ArrowLeft size={16} />
+        Back to Reports
+      </button>
+
+      {/* Employee name header */}
+      <div className="mb-4 rounded-xl border border-primary-200 bg-primary-50 p-3">
+        <p className="text-sm font-semibold text-primary-900">
+          Creating report for: <span className="text-primary-700">{employeeName}</span>
+        </p>
+        {employeeInfo?.departmentName && (
+          <p className="text-xs text-primary-600">{employeeInfo.departmentName}</p>
+        )}
+      </div>
+
       <div className="rounded-2xl bg-white p-6 shadow-sm">
-        {/* Report status banner — always shown so Submit button is always visible */}
+        {/* Report status banner */}
         <ReportBanner
           reportStatus={{ ...(reportStatus ?? {}), status: effectiveStatus }}
           onSubmit={() => { setSubmitError(null); setShowConfirm(true); }}
           isSubmitting={submitReport.isPending}
+          employeeName={employeeName}
         />
 
         {/* Submit error */}
@@ -487,7 +526,7 @@ export function CalendarPage() {
             </button>
           </div>
 
-          {/* Multi-select toggle (only when editable) */}
+          {/* Multi-select toggle */}
           {isEditable && (
             <button
               onClick={() => {
@@ -517,7 +556,6 @@ export function CalendarPage() {
             </button>
           )}
 
-          {/* Locked indicator when not editable */}
           {!isEditable && (
             <span className="flex items-center gap-1.5 text-sm text-gray-400">
               <Lock size={14} /> Read-only
@@ -582,7 +620,7 @@ export function CalendarPage() {
                   )}
                 </button>
 
-                {/* Status picker popup (single-select mode) */}
+                {/* Status picker popup */}
                 {isPickerOpen && !multiSelectMode && isEditable && (
                   <div className="absolute left-1/2 top-full z-50 -translate-x-1/2">
                     <StatusPicker
@@ -641,7 +679,7 @@ export function CalendarPage() {
       <ConfirmDialog
         open={showConfirm}
         title="Submit Monthly Report"
-        message={`Submit your attendance report for ${currentMonth.format("MMMM YYYY")} to your manager for approval? You won't be able to make changes until it's reviewed.`}
+        message={`Submit the attendance report for ${employeeName} for ${currentMonth.format("MMMM YYYY")}? This report will be sent to their assigned manager for approval.`}
         onConfirm={() => submitReport.mutate()}
         onCancel={() => setShowConfirm(false)}
       />

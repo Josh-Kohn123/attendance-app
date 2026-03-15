@@ -15,6 +15,9 @@ import dayjs from "dayjs";
 import nodemailer from "nodemailer";
 import type { Transporter } from "nodemailer";
 
+import { processDailyAttendance } from "./jobs/daily-attendance.js";
+import { processCalendarDigest } from "./jobs/calendar-digest.js";
+
 // ─── Email transporter ──────────────────────────────────────────────
 
 let transporter: Transporter | null = null;
@@ -26,7 +29,9 @@ function getTransporter(): Transporter {
 
   if (useOAuth) {
     transporter = nodemailer.createTransport({
-      service: "gmail",
+      host: "smtp.gmail.com",
+      port: 465,
+      secure: true,
       auth: {
         type: "OAuth2",
         user: process.env.GMAIL_USER!,
@@ -37,7 +42,9 @@ function getTransporter(): Transporter {
     });
   } else {
     transporter = nodemailer.createTransport({
-      service: "gmail",
+      host: "smtp.gmail.com",
+      port: 465,
+      secure: true,
       auth: {
         user: process.env.GMAIL_USER!,
         pass: process.env.GMAIL_APP_PASSWORD!,
@@ -225,6 +232,8 @@ async function run() {
     try {
       await checkReminders();
       await checkAutoLogout();
+      await processCalendarDigest();
+      await processDailyAttendance();
     } catch (err) {
       console.error("[Worker] Error:", err);
     }

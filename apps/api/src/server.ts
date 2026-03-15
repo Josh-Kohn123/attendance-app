@@ -11,6 +11,7 @@ import { employeeRoutes } from "./routes/employees.js";
 import { leaveRoutes } from "./routes/leave.js";
 import { monthlyReportRoutes } from "./routes/monthly-reports.js";
 import { healthRoutes } from "./routes/health.js";
+import { calendarDigestRoutes } from "./routes/calendar-digest.js";
 
 const envToLogger: Record<string, any> = {
   development: {
@@ -59,6 +60,7 @@ async function buildApp() {
   await app.register(employeeRoutes, { prefix: "/employees" });
   await app.register(leaveRoutes, { prefix: "/leave" });
   await app.register(monthlyReportRoutes, { prefix: "/monthly-reports" });
+  await app.register(calendarDigestRoutes, { prefix: "/calendar-digest" });
 
   return app;
 }

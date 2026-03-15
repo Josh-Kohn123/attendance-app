@@ -11,6 +11,29 @@ import {
 import { email } from "../services/email.js";
 import { auditLog } from "../services/audit.js";
 
+/**
+ * Helper: check if the current user can manage attendance for a given employee.
+ * Admins can manage all employees; managers can manage their direct reports only.
+ */
+async function canManageEmployee(request: any, employeeId: string) {
+  const ctx = request.authzContext!;
+  const employee = await prisma.employee.findFirst({
+    where: { id: employeeId, orgId: request.currentOrgId!, isActive: true },
+    include: { department: { select: { name: true } } },
+  });
+  if (!employee) return { allowed: false as const, employee: null };
+
+  // Admins can manage all employees
+  if (ctx.roles.includes("admin")) return { allowed: true as const, employee };
+
+  // Managers can manage their direct reports
+  if (ctx.roles.includes("manager") && employee.managerId === request.currentUserId) {
+    return { allowed: true as const, employee };
+  }
+
+  return { allowed: false as const, employee: null };
+}
+
 export async function attendanceRoutes(app: FastifyInstance) {
   /**
    * POST /attendance/clock-in — Clock in for today
@@ -386,6 +409,195 @@ export async function attendanceRoutes(app: FastifyInstance) {
       await auditLog(request, "ATTENDANCE_CORRECTED", "attendance_event", correction.id, { originalEventId }, { correctionId: correction.id });
 
       return { ok: true, data: correction };
+    }
+  );
+
+  // ──────────────────────────────────────────────────────────────────────────
+  // Proxy endpoints — admin/manager writes attendance on behalf of an employee
+  // ──────────────────────────────────────────────────────────────────────────
+
+  /**
+   * GET /attendance/employee/:employeeId — Get attendance events for a specific employee
+   */
+  app.get(
+    "/employee/:employeeId",
+    { preHandler: [requirePermission("reports.review")] },
+    async (request, reply) => {
+      const { employeeId } = request.params as { employeeId: string };
+      const parsed = AttendanceQuerySchema.safeParse(request.query);
+      if (!parsed.success) {
+        return reply.status(400).send({ ok: false, error: { code: "VALIDATION", message: parsed.error.message } });
+      }
+
+      const { allowed } = await canManageEmployee(request, employeeId);
+      if (!allowed) {
+        return reply.status(403).send({ ok: false, error: { code: "FORBIDDEN", message: "You cannot access this employee's attendance" } });
+      }
+
+      const { from, to, page, limit } = parsed.data;
+
+      const [events, total] = await Promise.all([
+        prisma.attendanceEvent.findMany({
+          where: {
+            orgId: request.currentOrgId!,
+            employeeId,
+            serverTimestamp: { gte: new Date(from), lte: new Date(`${to}T23:59:59Z`) },
+          },
+          orderBy: { serverTimestamp: "desc" },
+          skip: (page - 1) * limit,
+          take: limit,
+        }),
+        prisma.attendanceEvent.count({
+          where: {
+            orgId: request.currentOrgId!,
+            employeeId,
+            serverTimestamp: { gte: new Date(from), lte: new Date(`${to}T23:59:59Z`) },
+          },
+        }),
+      ]);
+
+      return { ok: true, data: { items: events, total, page, limit, totalPages: Math.ceil(total / limit) } };
+    }
+  );
+
+  /**
+   * POST /attendance/employee/:employeeId/calendar-entry — Set status for a date on behalf of employee
+   */
+  app.post(
+    "/employee/:employeeId/calendar-entry",
+    { preHandler: [requirePermission("reports.review")] },
+    async (request, reply) => {
+      const { employeeId } = request.params as { employeeId: string };
+      const parsed = CalendarEntrySchema.safeParse(request.body);
+      if (!parsed.success) {
+        return reply.status(400).send({ ok: false, error: { code: "VALIDATION", message: parsed.error.message } });
+      }
+
+      const { allowed, employee } = await canManageEmployee(request, employeeId);
+      if (!allowed || !employee) {
+        return reply.status(403).send({ ok: false, error: { code: "FORBIDDEN", message: "You cannot edit this employee's attendance" } });
+      }
+
+      const { date, status, siteId, source, requestId } = parsed.data;
+
+      // Idempotency
+      const existing = await prisma.attendanceEvent.findUnique({ where: { requestId } });
+      if (existing) return { ok: true, data: existing };
+
+      // Upsert: delete existing for this employee+date, then create
+      const dayStart = new Date(`${date}T00:00:00Z`);
+      const dayEnd = new Date(`${date}T23:59:59Z`);
+      await prisma.attendanceEvent.deleteMany({
+        where: {
+          employeeId,
+          serverTimestamp: { gte: dayStart, lte: dayEnd },
+          eventType: "CLOCK_IN",
+        },
+      });
+
+      const event = await prisma.attendanceEvent.create({
+        data: {
+          orgId: request.currentOrgId!,
+          employeeId,
+          siteId,
+          eventType: "CLOCK_IN",
+          source,
+          serverTimestamp: new Date(`${date}T09:00:00Z`),
+          createdByUserId: request.currentUserId!,
+          requestId,
+          notes: status,
+        },
+      });
+
+      return { ok: true, data: event };
+    }
+  );
+
+  /**
+   * DELETE /attendance/employee/:employeeId/calendar-entry?date=YYYY-MM-DD — Clear status on behalf of employee
+   */
+  app.delete(
+    "/employee/:employeeId/calendar-entry",
+    { preHandler: [requirePermission("reports.review")] },
+    async (request, reply) => {
+      const { employeeId } = request.params as { employeeId: string };
+      const { date } = request.query as { date?: string };
+      if (!date || !/^\d{4}-\d{2}-\d{2}$/.test(date)) {
+        return reply.status(400).send({ ok: false, error: { code: "VALIDATION", message: "date query param required (YYYY-MM-DD)" } });
+      }
+
+      const { allowed } = await canManageEmployee(request, employeeId);
+      if (!allowed) {
+        return reply.status(403).send({ ok: false, error: { code: "FORBIDDEN", message: "You cannot edit this employee's attendance" } });
+      }
+
+      const dayStart = new Date(`${date}T00:00:00Z`);
+      const dayEnd = new Date(`${date}T23:59:59Z`);
+      await prisma.attendanceEvent.deleteMany({
+        where: {
+          employeeId,
+          serverTimestamp: { gte: dayStart, lte: dayEnd },
+          eventType: "CLOCK_IN",
+        },
+      });
+
+      return { ok: true };
+    }
+  );
+
+  /**
+   * POST /attendance/employee/:employeeId/calendar-bulk — Bulk set status on behalf of employee
+   */
+  app.post(
+    "/employee/:employeeId/calendar-bulk",
+    { preHandler: [requirePermission("reports.review")] },
+    async (request, reply) => {
+      const { employeeId } = request.params as { employeeId: string };
+      const parsed = BulkCalendarEntrySchema.safeParse(request.body);
+      if (!parsed.success) {
+        return reply.status(400).send({ ok: false, error: { code: "VALIDATION", message: parsed.error.message } });
+      }
+
+      const { allowed, employee } = await canManageEmployee(request, employeeId);
+      if (!allowed || !employee) {
+        return reply.status(403).send({ ok: false, error: { code: "FORBIDDEN", message: "You cannot edit this employee's attendance" } });
+      }
+
+      const { dates, status, siteId, source } = parsed.data;
+
+      const events = await prisma.$transaction(async (tx) => {
+        for (const date of dates) {
+          const dayStart = new Date(`${date}T00:00:00Z`);
+          const dayEnd = new Date(`${date}T23:59:59Z`);
+          await tx.attendanceEvent.deleteMany({
+            where: {
+              employeeId,
+              serverTimestamp: { gte: dayStart, lte: dayEnd },
+              eventType: "CLOCK_IN",
+            },
+          });
+        }
+
+        return Promise.all(
+          dates.map((date) =>
+            tx.attendanceEvent.create({
+              data: {
+                orgId: request.currentOrgId!,
+                employeeId,
+                siteId,
+                eventType: "CLOCK_IN",
+                source: source ?? "MANUAL",
+                serverTimestamp: new Date(`${date}T09:00:00Z`),
+                createdByUserId: request.currentUserId!,
+                requestId: crypto.randomUUID(),
+                notes: status,
+              },
+            })
+          )
+        );
+      });
+
+      return { ok: true, data: events };
     }
   );
 }

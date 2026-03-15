@@ -6,6 +6,26 @@ import { email } from "../services/email.js";
 import { auditLog } from "../services/audit.js";
 import ExcelJS from "exceljs";
 import PDFDocument from "pdfkit";
+import dayjs from "dayjs";
+
+// Hebrew day names (0=Sun ... 6=Sat)
+const HEBREW_DAYS = ["יום א", "יום ב", "יום ג", "יום ד", "יום ה", "יום ו", "יום ש"];
+
+// Status label mapping for the Event column
+const STATUS_EVENT_LABEL: Record<string, string> = {
+  PRESENT: "Present",
+  SICK: "Sick",
+  CHILD_SICK: "Child Sick",
+  VACATION: "Vacation",
+  RESERVES: "Military service",
+  HALF_DAY: "Half Day",
+  WORK_FROM_HOME: "Work From Home",
+};
+
+/** Check if a date is an Israeli weekend (Fri=5, Sat=6) */
+function isWeekend(d: dayjs.Dayjs): boolean {
+  return d.day() === 5 || d.day() === 6;
+}
 
 export async function reportRoutes(app: FastifyInstance) {
   /**
@@ -43,21 +63,23 @@ export async function reportRoutes(app: FastifyInstance) {
       });
 
       // Group by employee and status (stored in notes field)
-      const eventsByEmployee = new Map<string, { total: number; present: number; sick: number; vacation: number; reserves: number; halfDay: number }>();
+      const eventsByEmployee = new Map<string, { total: number; present: number; sick: number; childSick: number; vacation: number; reserves: number; halfDay: number; workFromHome: number }>();
       for (const event of events) {
-        const existing = eventsByEmployee.get(event.employeeId) ?? { total: 0, present: 0, sick: 0, vacation: 0, reserves: 0, halfDay: 0 };
+        const existing = eventsByEmployee.get(event.employeeId) ?? { total: 0, present: 0, sick: 0, childSick: 0, vacation: 0, reserves: 0, halfDay: 0, workFromHome: 0 };
         const status = ((event.notes as string) ?? "PRESENT").toUpperCase();
         existing.total += 1;
         if (status === "SICK") existing.sick += 1;
+        else if (status === "CHILD_SICK") existing.childSick += 1;
         else if (status === "VACATION") existing.vacation += 1;
         else if (status === "RESERVES") existing.reserves += 1;
         else if (status === "HALF_DAY") existing.halfDay += 1;
+        else if (status === "WORK_FROM_HOME") existing.workFromHome += 1;
         else existing.present += 1; // PRESENT or anything unrecognised
         eventsByEmployee.set(event.employeeId, existing);
       }
 
       const summary = employees.map((emp) => {
-        const counts = eventsByEmployee.get(emp.id) ?? { total: 0, present: 0, sick: 0, vacation: 0, reserves: 0, halfDay: 0 };
+        const counts = eventsByEmployee.get(emp.id) ?? { total: 0, present: 0, sick: 0, childSick: 0, vacation: 0, reserves: 0, halfDay: 0, workFromHome: 0 };
         return {
           employeeId: emp.id,
           name: `${emp.firstName} ${emp.lastName}`,
@@ -66,9 +88,11 @@ export async function reportRoutes(app: FastifyInstance) {
           totalDays: counts.total,
           present: counts.present,
           sick: counts.sick,
+          childSick: counts.childSick,
           vacation: counts.vacation,
           reserves: counts.reserves,
           halfDay: counts.halfDay,
+          workFromHome: counts.workFromHome,
         };
       });
 
@@ -121,7 +145,13 @@ export async function reportRoutes(app: FastifyInstance) {
 
   /**
    * GET /reports/download?format=EXCEL|PDF&from=YYYY-MM-DD&to=YYYY-MM-DD
-   * Generates and streams the file directly as a browser download.
+   *
+   * Generates two reports in a single file:
+   *   Sheet 1 / Section 1: "Admin Report" — day-by-day log per employee
+   *   Sheet 2 / Section 2: "report" (Summary) — one row per employee with totals
+   *
+   * For EXCEL: single .xlsx workbook with two sheets.
+   * For PDF:   single .pdf with both sections.
    */
   app.get(
     "/download",
@@ -133,7 +163,7 @@ export async function reportRoutes(app: FastifyInstance) {
       }
 
       const ctx = request.authzContext!;
-      const empWhere: any = { orgId: request.currentOrgId! };
+      const empWhere: any = { orgId: request.currentOrgId!, isActive: true };
       if (!ctx.roles.includes("admin")) {
         const scopedDeptIds = ctx.scopes.filter((s: any) => s.scopeType === "department").map((s: any) => s.scopeId);
         if (scopedDeptIds.length > 0) empWhere.departmentId = { in: scopedDeptIds };
@@ -155,91 +185,166 @@ export async function reportRoutes(app: FastifyInstance) {
         },
       });
 
-      // Group by employee + status
-      const eventsByEmp = new Map<string, { total: number; present: number; sick: number; vacation: number; reserves: number; halfDay: number }>();
+      // Build a lookup: employeeId → date → status
+      const eventsByEmpDate = new Map<string, Map<string, string>>();
       for (const ev of events) {
-        const counts = eventsByEmp.get(ev.employeeId) ?? { total: 0, present: 0, sick: 0, vacation: 0, reserves: 0, halfDay: 0 };
+        if (!eventsByEmpDate.has(ev.employeeId)) eventsByEmpDate.set(ev.employeeId, new Map());
+        const dateStr = dayjs(ev.serverTimestamp).format("YYYY-MM-DD");
         const status = ((ev.notes as string) ?? "PRESENT").toUpperCase();
-        counts.total += 1;
-        if (status === "SICK") counts.sick += 1;
-        else if (status === "VACATION") counts.vacation += 1;
-        else if (status === "RESERVES") counts.reserves += 1;
-        else if (status === "HALF_DAY") counts.halfDay += 1;
-        else counts.present += 1;
-        eventsByEmp.set(ev.employeeId, counts);
+        eventsByEmpDate.get(ev.employeeId)!.set(dateStr, status);
       }
 
-      // Fetch monthly report status for each employee for this period's month/year
-      const fromDate = new Date(from);
-      const reportMonth = fromDate.getMonth() + 1; // 1-indexed
-      const reportYear = fromDate.getFullYear();
-      const monthlyReports = await prisma.monthlyReport.findMany({
-        where: {
-          orgId: request.currentOrgId!,
-          employeeId: { in: empIds },
-          month: reportMonth,
-          year: reportYear,
-        },
-      });
-      const reportStatusByEmpId = new Map(monthlyReports.map((r: any) => [r.employeeId, r.status as string]));
+      // Also build summary counts per employee
+      const empSummary = new Map<string, { total: number; present: number; sick: number; childSick: number; vacation: number; reserves: number; halfDay: number; workFromHome: number }>();
+      for (const ev of events) {
+        const c = empSummary.get(ev.employeeId) ?? { total: 0, present: 0, sick: 0, childSick: 0, vacation: 0, reserves: 0, halfDay: 0, workFromHome: 0 };
+        const status = ((ev.notes as string) ?? "PRESENT").toUpperCase();
+        c.total += 1;
+        if (status === "SICK") c.sick += 1;
+        else if (status === "CHILD_SICK") c.childSick += 1;
+        else if (status === "VACATION") c.vacation += 1;
+        else if (status === "RESERVES") c.reserves += 1;
+        else if (status === "HALF_DAY") c.halfDay += 1;
+        else if (status === "WORK_FROM_HOME") c.workFromHome += 1;
+        else c.present += 1;
+        empSummary.set(ev.employeeId, c);
+      }
 
-      const rows = employees.map((emp: any) => {
-        const c = eventsByEmp.get(emp.id) ?? { total: 0, present: 0, sick: 0, vacation: 0, reserves: 0, halfDay: 0 };
-        const rawStatus = reportStatusByEmpId.get(emp.id) ?? "DRAFT";
-        const reportStatusLabel: Record<string, string> = { DRAFT: "Pending Submission", SUBMITTED: "Submitted", APPROVED: "Approved", REJECTED: "Rejected" };
-        return {
-          name: `${emp.firstName} ${emp.lastName}`,
-          department: emp.department?.name ?? "N/A",
-          reportStatus: reportStatusLabel[rawStatus] ?? rawStatus,
-          total: c.total, present: c.present, sick: c.sick, vacation: c.vacation, reserves: c.reserves, halfDay: c.halfDay,
-        };
-      });
+      // Generate all dates in range
+      const allDates: dayjs.Dayjs[] = [];
+      let cursor = dayjs(from);
+      const endDate = dayjs(to);
+      while (cursor.isBefore(endDate) || cursor.isSame(endDate, "day")) {
+        allDates.push(cursor);
+        cursor = cursor.add(1, "day");
+      }
 
       const period = `${from} to ${to}`;
-
       await auditLog(request, "REPORT_EXPORTED", "report_download", null as any, null, { format, from, to });
 
       if (format.toUpperCase() === "EXCEL") {
         const wb = new ExcelJS.Workbook();
-        const ws = wb.addWorksheet("Attendance Report");
 
-        // Title row
-        ws.mergeCells("A1:I1");
-        const titleCell = ws.getCell("A1");
-        titleCell.value = `Attendance Report — ${period}`;
-        titleCell.font = { size: 14, bold: true };
-        titleCell.alignment = { horizontal: "center" };
+        // ────────────────────────────────────────────────────
+        // Sheet 1: Admin Report (day-by-day per employee)
+        // ────────────────────────────────────────────────────
+        const ws1 = wb.addWorksheet("Admin Report");
 
-        // Headers: Employee | Department | Report Status | Total | Present | Sick | Vacation | Reserves | Half Day
-        const headerRow = ws.addRow(["Employee", "Department", "Report Status", "Total", "Present", "Sick", "Vacation", "Reserves", "Half Day"]);
-        headerRow.font = { bold: true };
-        headerRow.eachCell((cell) => {
+        const adminHeaders = ["שם העובד", "תאריך", "יום", "סוג", "כניסה", "יציאה", "סך שעות", "אירוע"];
+        const headerRow1 = ws1.addRow(adminHeaders);
+        headerRow1.font = { bold: true, name: "Arial" };
+        headerRow1.eachCell((cell) => {
           cell.fill = { type: "pattern", pattern: "solid", fgColor: { argb: "FFE0E7FF" } };
           cell.border = { bottom: { style: "thin" } };
+          cell.alignment = { horizontal: "center" };
         });
 
-        for (const row of rows) {
-          const dataRow = ws.addRow([row.name, row.department, row.reportStatus, row.total, row.present, row.sick, row.vacation, row.reserves, row.halfDay]);
-          // Color-code the Report Status cell (column 3)
-          const statusCell = dataRow.getCell(3);
-          const statusColors: Record<string, string> = {
-            "Approved": "FFD1FAE5",
-            "Submitted": "FFDBEAFE",
-            "Rejected": "FFFEE2E2",
-            "Pending Submission": "FFF3F4F6",
-          };
-          const statusColor = statusColors[row.reportStatus] ?? "FFF3F4F6";
-          statusCell.fill = { type: "pattern", pattern: "solid", fgColor: { argb: statusColor } };
+        for (const emp of employees) {
+          const empName = `${emp.firstName} ${emp.lastName}`;
+          const empDates = eventsByEmpDate.get(emp.id) ?? new Map();
+
+          for (const date of allDates) {
+            const dateStr = date.format("YYYY-MM-DD");
+            const dayOfWeek = date.day(); // 0=Sun
+            const hebrewDay = HEBREW_DAYS[dayOfWeek];
+            const weekend = isWeekend(date);
+            const status = empDates.get(dateStr);
+
+            const dayType = weekend ? "סופ\"ש" : "יום חול";
+
+            // Entry/exit/hours: show 10:00*/18:00*/08:00 for workdays with PRESENT status, blank otherwise
+            let entry = "";
+            let exit = "";
+            let totalHours = "";
+            let eventLabel = "";
+
+            if (!weekend && status) {
+              if (status === "PRESENT") {
+                entry = "10:00 *";
+                exit = "18:00 *";
+                totalHours = "08:00";
+              } else if (status === "HALF_DAY") {
+                entry = "10:00 *";
+                exit = "14:00 *";
+                totalHours = "04:00";
+                eventLabel = STATUS_EVENT_LABEL[status] ?? status;
+              } else {
+                // Sick, Vacation, Reserves — no hours, just the event label
+                eventLabel = STATUS_EVENT_LABEL[status] ?? status;
+              }
+            } else if (!weekend && !status) {
+              // No record for this workday — leave blank
+            }
+
+            ws1.addRow([empName, date.format("DD/MM"), hebrewDay, dayType, entry, exit, totalHours, eventLabel]);
+          }
         }
 
-        // Auto-width columns
-        ws.columns.forEach((col) => {
+        // Auto-width columns for admin report
+        ws1.columns.forEach((col) => {
+          let maxLen = 8;
+          col.eachCell?.({ includeEmpty: true }, (cell) => {
+            const len = String(cell.value ?? "").length;
+            if (len > maxLen) maxLen = len;
+          });
+          col.width = Math.min(maxLen + 2, 30);
+        });
+
+        // ────────────────────────────────────────────────────
+        // Sheet 2: Summary Report (one row per employee)
+        // ────────────────────────────────────────────────────
+        const ws2 = wb.addWorksheet("report");
+
+        const summaryHeaders = ["שם עובד", "תג עובד", "ימי נוכחות", "שעות נוכחות", "Work from home", "Vacation", "Military service", "Child sick", "", "Vacation", "Sick day", "Military service"];
+        const headerRow2 = ws2.addRow(summaryHeaders);
+        headerRow2.font = { bold: true, name: "Arial" };
+        headerRow2.eachCell((cell) => {
+          cell.fill = { type: "pattern", pattern: "solid", fgColor: { argb: "FFE0E7FF" } };
+          cell.border = { bottom: { style: "thin" } };
+          cell.alignment = { horizontal: "center" };
+        });
+
+        let totalVacation = 0;
+        let totalSick = 0;
+        let totalReserves = 0;
+
+        for (const emp of employees) {
+          const c = empSummary.get(emp.id) ?? { total: 0, present: 0, sick: 0, childSick: 0, vacation: 0, reserves: 0, halfDay: 0, workFromHome: 0 };
+          const attendanceDays = c.total;
+          const attendanceHours = `${String(c.present * 8 + c.halfDay * 4).padStart(1, "0")}:00`;
+
+          totalVacation += c.vacation;
+          totalSick += c.sick;
+          totalReserves += c.reserves;
+
+          ws2.addRow([
+            `${emp.lastName} ${emp.firstName}`,
+            (emp as any).employeeNumber ?? "",
+            attendanceDays,
+            attendanceHours,
+            c.workFromHome > 0 ? String(c.workFromHome) + ".0" : "",
+            c.vacation > 0 ? String(c.vacation) + ".0" : "",
+            c.reserves > 0 ? String(c.reserves) + ".0" : "",
+            c.childSick > 0 ? String(c.childSick) + ".0" : "",
+            "", // Empty column I
+            c.vacation,
+            c.sick,
+            c.reserves,
+          ]);
+        }
+
+        // Totals row (columns J, K, L)
+        const totalsRow = ws2.addRow(["", "", "", "", "", "", "", "", "", totalVacation, totalSick, totalReserves]);
+        totalsRow.font = { bold: true };
+
+        // Auto-width columns for summary
+        ws2.columns.forEach((col) => {
           let maxLen = 10;
           col.eachCell?.({ includeEmpty: true }, (cell) => {
             const len = String(cell.value ?? "").length;
             if (len > maxLen) maxLen = len;
           });
-          col.width = Math.min(maxLen + 2, 40);
+          col.width = Math.min(maxLen + 2, 30);
         });
 
         const buf = await wb.xlsx.writeBuffer();
@@ -265,41 +370,89 @@ export async function reportRoutes(app: FastifyInstance) {
           });
           doc.on("error", reject);
 
-          // Title
-          doc.fontSize(16).text(`Attendance Report`, { align: "center" });
-          doc.fontSize(10).text(`Period: ${period}`, { align: "center" });
-          doc.moveDown(1);
+          // ──── Section 1: Admin Report (daily log) ────
+          doc.fontSize(14).font("Helvetica-Bold").text("Admin Report", { align: "center" });
+          doc.fontSize(9).font("Helvetica").text(`Period: ${period}`, { align: "center" });
+          doc.moveDown(0.5);
 
-          // Table header: Employee | Department | Report Status | Total | Present | Sick | Vacation | Reserves | Half Day
-          const cols = ["Employee", "Department", "Report Status", "Total", "Present", "Sick", "Vacation", "Reserves", "Half Day"];
-          const colWidths = [140, 110, 90, 45, 45, 45, 55, 55, 50];
+          const adminCols = ["Employee", "Date", "Day", "Type", "Entry", "Exit", "Hours", "Event"];
+          const adminWidths = [130, 50, 50, 60, 50, 50, 50, 120];
           const startX = 40;
+
+          // Header
           let y = doc.y;
-
-          doc.fontSize(8).font("Helvetica-Bold");
+          doc.fontSize(7).font("Helvetica-Bold");
           let x = startX;
-          for (let i = 0; i < cols.length; i++) {
-            doc.text(cols[i], x, y, { width: colWidths[i], align: "left" });
-            x += colWidths[i] + 6;
+          for (let i = 0; i < adminCols.length; i++) {
+            doc.text(adminCols[i], x, y, { width: adminWidths[i], align: "left" });
+            x += adminWidths[i] + 4;
           }
-          y += 16;
-          doc.moveTo(startX, y).lineTo(startX + 690, y).stroke();
-          y += 6;
+          y += 12;
+          doc.moveTo(startX, y).lineTo(startX + 650, y).stroke();
+          y += 4;
 
-          // Table rows
+          doc.font("Helvetica").fontSize(7);
+          for (const emp of employees) {
+            const empName = `${emp.firstName} ${emp.lastName}`;
+            const empDates = eventsByEmpDate.get(emp.id) ?? new Map();
+
+            for (const date of allDates) {
+              if (y > 540) { doc.addPage(); y = 40; }
+
+              const dateStr = date.format("YYYY-MM-DD");
+              const weekend = isWeekend(date);
+              const status = empDates.get(dateStr);
+              const dayType = weekend ? "Weekend" : "Workday";
+
+              let entry = "", exit2 = "", hours = "", event = "";
+              if (!weekend && status) {
+                if (status === "PRESENT") { entry = "10:00"; exit2 = "18:00"; hours = "08:00"; }
+                else if (status === "HALF_DAY") { entry = "10:00"; exit2 = "14:00"; hours = "04:00"; event = "Half Day"; }
+                else { event = STATUS_EVENT_LABEL[status] ?? status; }
+              }
+
+              const vals = [empName, date.format("DD/MM"), HEBREW_DAYS[date.day()], dayType, entry, exit2, hours, event];
+              x = startX;
+              for (let i = 0; i < vals.length; i++) {
+                doc.text(vals[i], x, y, { width: adminWidths[i], align: "left" });
+                x += adminWidths[i] + 4;
+              }
+              y += 10;
+            }
+          }
+
+          // ──── Section 2: Summary Report ────
+          doc.addPage();
+          doc.fontSize(14).font("Helvetica-Bold").text("Summary Report", { align: "center" });
+          doc.fontSize(9).font("Helvetica").text(`Period: ${period}`, { align: "center" });
+          doc.moveDown(0.5);
+
+          const sumCols = ["Employee", "Days", "Hours", "Vacation", "Sick", "Reserves", "Half Day"];
+          const sumWidths = [160, 50, 60, 60, 50, 60, 60];
+
+          y = doc.y;
+          doc.fontSize(8).font("Helvetica-Bold");
+          x = startX;
+          for (let i = 0; i < sumCols.length; i++) {
+            doc.text(sumCols[i], x, y, { width: sumWidths[i], align: "left" });
+            x += sumWidths[i] + 6;
+          }
+          y += 14;
+          doc.moveTo(startX, y).lineTo(startX + 600, y).stroke();
+          y += 4;
+
           doc.font("Helvetica").fontSize(8);
-          for (const row of rows) {
-            if (y > 540) {
-              doc.addPage();
-              y = 40;
-            }
-            const values = [row.name, row.department, row.reportStatus, String(row.total), String(row.present), String(row.sick), String(row.vacation), String(row.reserves), String(row.halfDay)];
+          for (const emp of employees) {
+            if (y > 540) { doc.addPage(); y = 40; }
+            const c = empSummary.get(emp.id) ?? { total: 0, present: 0, sick: 0, childSick: 0, vacation: 0, reserves: 0, halfDay: 0, workFromHome: 0 };
+            const hrs = `${c.present * 8 + c.halfDay * 4}:00`;
+            const vals = [`${emp.lastName} ${emp.firstName}`, String(c.total), hrs, String(c.vacation), String(c.sick), String(c.reserves), String(c.halfDay), String(c.childSick), String(c.workFromHome)];
             x = startX;
-            for (let i = 0; i < values.length; i++) {
-              doc.text(values[i], x, y, { width: colWidths[i], align: "left" });
-              x += colWidths[i] + 6;
+            for (let i = 0; i < vals.length; i++) {
+              doc.text(vals[i], x, y, { width: sumWidths[i], align: "left" });
+              x += sumWidths[i] + 6;
             }
-            y += 14;
+            y += 12;
           }
 
           doc.end();

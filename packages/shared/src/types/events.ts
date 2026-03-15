@@ -3,9 +3,11 @@
 export const DAY_STATUSES = [
   "PRESENT",
   "SICK",
+  "CHILD_SICK",
   "VACATION",
   "RESERVES",
   "HALF_DAY",
+  "WORK_FROM_HOME",
 ] as const;
 
 export type DayStatus = (typeof DAY_STATUSES)[number];
@@ -57,6 +59,7 @@ export const AUDIT_ACTIONS = [
   "MONTHLY_REPORT_SUBMITTED",
   "MONTHLY_REPORT_APPROVED",
   "MONTHLY_REPORT_REJECTED",
+  "DAILY_ATTENDANCE_PROCESSED",
 ] as const;
 
 export type AuditAction = (typeof AUDIT_ACTIONS)[number];

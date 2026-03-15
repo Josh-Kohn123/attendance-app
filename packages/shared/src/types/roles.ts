@@ -113,7 +113,6 @@ export const ROLE_PERMISSIONS: Record<Role, readonly Permission[]> = {
     "attendance.approve",
     "reports.view_self",
     "reports.view_team",
-    "reports.export",
     "employees.view_self",
     "employees.view_team",
     "leave.request",

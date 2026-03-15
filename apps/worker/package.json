@@ -15,6 +15,7 @@
     "bullmq": "^5.8.0",
     "ioredis": "^5.4.0",
     "dayjs": "^1.11.0",
+    "googleapis": "^140.0.0",
     "nodemailer": "^6.9.0"
   },
   "devDependencies": {
