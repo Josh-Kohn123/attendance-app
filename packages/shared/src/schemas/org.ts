@@ -20,9 +20,15 @@ export const CreateDepartmentSchema = z.object({
 
 export const UpdatePolicySchema = z.object({
   monthStartDay: z.number().int().min(1).max(28).optional(),
-  autoLogoutTime: z.string().regex(/^\d{2}:\d{2}$/).optional(),
+  autoLogoutTime: z.preprocess(
+    (v) => (v === "" ? null : v),
+    z.string().regex(/^\d{2}:\d{2}$/).nullable().optional(),
+  ),
   autoLogoutEnabled: z.boolean().optional(),
-  reminderTime: z.string().regex(/^\d{2}:\d{2}$/).optional(),
+  reminderTime: z.preprocess(
+    (v) => (v === "" ? null : v),
+    z.string().regex(/^\d{2}:\d{2}$/).nullable().optional(),
+  ),
   reminderEnabled: z.boolean().optional(),
   timezone: z.string().optional(),
   calendarDigestAdminUserId: z.string().uuid().nullable().optional(),

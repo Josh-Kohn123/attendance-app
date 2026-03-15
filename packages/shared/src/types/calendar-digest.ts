@@ -58,6 +58,8 @@ export interface DigestConfirmDecision {
   decision: "CONFIRMED" | "DECLINED";
   resolvedEmployeeId?: string;
   resolvedStatus?: string;
+  startDate?: string; // override the entry's date range
+  endDate?: string;
 }
 
 export interface DigestAdditionalEntry {

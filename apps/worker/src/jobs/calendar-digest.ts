@@ -73,10 +73,16 @@ function getTransporter(): Transporter {
 
 export async function processCalendarDigest(): Promise<void> {
   const enabled = process.env.DAILY_ATTENDANCE_ENABLED === "true";
-  if (!enabled) return;
+  if (!enabled) {
+    console.log("[CalendarDigest] Skipped — DAILY_ATTENDANCE_ENABLED is not 'true'");
+    return;
+  }
 
   const calendarId = process.env.GOOGLE_CALENDAR_ID;
-  if (!calendarId) return;
+  if (!calendarId) {
+    console.log("[CalendarDigest] Skipped — GOOGLE_CALENDAR_ID not set");
+    return;
+  }
 
   const configuredTime = process.env.CALENDAR_DIGEST_TIME ?? "08:00";
   const now = dayjs();
@@ -88,13 +94,25 @@ export async function processCalendarDigest(): Promise<void> {
     },
   });
 
+  if (orgs.length === 0) {
+    console.log("[CalendarDigest] No orgs with calendarDigestAdminUserId configured");
+    return;
+  }
+
   for (const org of orgs) {
     try {
       const orgNow = now.tz(org.timezone);
       const [hours, minutes] = configuredTime.split(":").map(Number);
       const targetTime = orgNow.hour(hours).minute(minutes);
+      const diffMinutes = Math.abs(orgNow.diff(targetTime, "minute"));
 
-      if (Math.abs(orgNow.diff(targetTime, "minute")) > 5) continue;
+      // Widen window to 7 minutes to account for worker startup delays
+      if (diffMinutes > 7) continue;
+
+      console.log(
+        `[CalendarDigest] Processing org ${org.id} (${org.name}) — ` +
+          `orgTime: ${orgNow.format("HH:mm")}, target: ${configuredTime}, diff: ${diffMinutes}m`,
+      );
 
       await processOrgDigest(org, calendarId);
     } catch (error) {
@@ -129,9 +147,17 @@ async function processOrgDigest(
   }
 
   // Fetch all calendar events for today
+  console.log(`[CalendarDigest] Fetching events for ${today} (tz: ${org.timezone}, calendar: ${calendarId})`);
   const events = await fetchDayEvents(calendarId, today, org.timezone);
+  console.log(`[CalendarDigest] Found ${events.length} events for ${today}`);
+
   if (events.length === 0) {
-    console.log(`[CalendarDigest] No events on ${today} for org ${org.id}`);
+    // Create an empty digest record so we know the job ran (idempotency)
+    // but don't send an email since there's nothing to review
+    await prisma.calendarDigest.create({
+      data: { orgId: org.id, date: today, status: "SUBMITTED" },
+    });
+    console.log(`[CalendarDigest] No events on ${today} for org ${org.id} — marked as processed`);
     return;
   }
 
@@ -259,12 +285,19 @@ async function processOrgDigest(
   const frontendUrl = process.env.CORS_ORIGIN ?? "http://localhost:5173";
   const reviewUrl = `${frontendUrl}/digest/${digest.token}`;
 
-  await sendDigestEmail(admin.email, admin.displayName, org.name, today, entryData, reviewUrl);
-
-  console.log(
-    `[CalendarDigest] Digest sent to ${admin.email} for org ${org.id} on ${today} ` +
-      `(${entryData.length} events, token: ${digest.token})`,
-  );
+  try {
+    console.log(`[CalendarDigest] Sending digest email to ${admin.email}...`);
+    await sendDigestEmail(admin.email, admin.displayName, org.name, today, entryData, reviewUrl);
+    console.log(
+      `[CalendarDigest] Digest sent to ${admin.email} for org ${org.id} on ${today} ` +
+        `(${entryData.length} events, token: ${digest.token})`,
+    );
+  } catch (emailError) {
+    console.error(`[CalendarDigest] FAILED to send email to ${admin.email}:`, emailError);
+    // Delete the digest record so it will be retried on next tick
+    await prisma.calendarDigest.delete({ where: { id: digest.id } });
+    throw emailError;
+  }
 }
 
 // ─── Email ───────────────────────────────────────────────────────────

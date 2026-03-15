@@ -192,7 +192,10 @@ export async function calendarDigestRoutes(app: FastifyInstance) {
 
         if (!employee || !employee.isActive) continue;
 
-        const workdays = getWorkdaysInRange(entry.startDate, entry.endDate);
+        // Use admin-overridden date range if provided, otherwise fall back to the entry's dates
+        const effectiveStart = dec.startDate ?? entry.startDate;
+        const effectiveEnd = dec.endDate ?? entry.endDate;
+        const workdays = getWorkdaysInRange(effectiveStart, effectiveEnd);
         for (const date of workdays) {
           await applyAttendanceIfAbsent(digest.orgId, employee, date, status, systemUserId);
         }
@@ -207,12 +210,19 @@ export async function calendarDigestRoutes(app: FastifyInstance) {
           select: { id: true, siteId: true, orgId: true, isActive: true },
         });
 
-        if (!employee || !employee.isActive || employee.orgId !== digest.orgId) continue;
+        if (!employee || !employee.isActive || employee.orgId !== digest.orgId) {
+          console.warn(`[CalendarDigest] Skipping additional entry for employee ${extra.employeeId} — not found, inactive, or wrong org`);
+          continue;
+        }
 
         const workdays = getWorkdaysInRange(extra.startDate, extra.endDate);
+        let entriesCreated = 0;
         for (const date of workdays) {
-          await applyAttendanceIfAbsent(digest.orgId, employee, date, extra.status, systemUserId);
+          const created = await applyAttendanceForced(digest.orgId, employee, date, extra.status, systemUserId);
+          if (created) entriesCreated++;
         }
+
+        console.log(`[CalendarDigest] Additional entry for employee ${extra.employeeId} (${extra.startDate}→${extra.endDate}): ${entriesCreated} attendance records written`);
 
         // Record in digest entries for audit trail
         await prisma.calendarDigestEntry.create({
@@ -231,7 +241,7 @@ export async function calendarDigestRoutes(app: FastifyInstance) {
           },
         });
 
-        applied++;
+        if (entriesCreated > 0) applied++;
       }
 
       // Mark digest as submitted
@@ -306,4 +316,61 @@ async function applyAttendanceIfAbsent(
       notes: status,
     },
   });
+}
+
+/**
+ * Create or update an attendance CLOCK_IN event for a manual admin entry.
+ *
+ * Unlike applyAttendanceIfAbsent, this always writes the record:
+ * - If a GOOGLE_CALENDAR CLOCK_IN already exists for the day, its status is updated.
+ * - If a device/kiosk CLOCK_IN exists, a separate GOOGLE_CALENDAR record is created
+ *   so the manual entry is preserved alongside the physical clock-in.
+ * - Returns true if a record was created or updated, false if nothing changed.
+ */
+async function applyAttendanceForced(
+  orgId: string,
+  employee: { id: string; siteId: string },
+  dateStr: string,
+  status: string,
+  systemUserId: string,
+): Promise<boolean> {
+  // Check for an existing GOOGLE_CALENDAR CLOCK_IN on this day
+  const existingCalendar = await prisma.attendanceEvent.findFirst({
+    where: {
+      employeeId: employee.id,
+      eventType: "CLOCK_IN",
+      source: "GOOGLE_CALENDAR",
+      serverTimestamp: {
+        gte: new Date(`${dateStr}T00:00:00Z`),
+        lte: new Date(`${dateStr}T23:59:59Z`),
+      },
+    },
+    select: { id: true, notes: true },
+  });
+
+  if (existingCalendar) {
+    // Update the existing calendar entry with the new status
+    await prisma.attendanceEvent.update({
+      where: { id: existingCalendar.id },
+      data: { notes: status },
+    });
+    console.log(`[CalendarDigest] Updated existing GOOGLE_CALENDAR entry for ${employee.id} on ${dateStr}: ${existingCalendar.notes} → ${status}`);
+    return true;
+  }
+
+  // No calendar entry — create one (even if a kiosk entry exists)
+  await prisma.attendanceEvent.create({
+    data: {
+      orgId,
+      employeeId: employee.id,
+      siteId: employee.siteId,
+      eventType: "CLOCK_IN",
+      source: "GOOGLE_CALENDAR",
+      serverTimestamp: new Date(`${dateStr}T09:00:00Z`),
+      createdByUserId: systemUserId,
+      requestId: crypto.randomUUID(),
+      notes: status,
+    },
+  });
+  return true;
 }

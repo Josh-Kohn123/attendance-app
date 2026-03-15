@@ -1,8 +1,9 @@
 import { useState } from "react";
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
+import { useNavigate } from "react-router-dom";
 import { api } from "../../../../api/client";
 import dayjs from "dayjs";
-import { FileText, FileSpreadsheet, CheckCircle, Clock, AlertCircle, User } from "lucide-react";
+import { FileText, FileSpreadsheet, CheckCircle, Clock, AlertCircle, User, PenLine } from "lucide-react";
 
 /* ── helpers ─────────────────────────────────────────────────────── */
 
@@ -55,6 +56,7 @@ async function downloadReport(format: "EXCEL" | "PDF", from: string, to: string)
 
 export function ManagerReports() {
   const queryClient = useQueryClient();
+  const navigate = useNavigate();
   const [month, setMonth] = useState(dayjs().startOf("month"));
   const from = month.format("YYYY-MM-DD");
   const to = month.endOf("month").format("YYYY-MM-DD");
@@ -234,6 +236,14 @@ export function ManagerReports() {
                           Reject
                         </button>
                       </div>
+                    ) : ["DRAFT", "REJECTED"].includes(row.status ?? "DRAFT") ? (
+                      <button
+                        onClick={() => navigate(`/manager/create-report/${row.employeeId}?month=${m}&year=${y}`)}
+                        className="inline-flex items-center gap-1 rounded bg-primary-600 px-2 py-1 text-xs font-medium text-white hover:bg-primary-700"
+                      >
+                        <PenLine size={12} />
+                        {(row.status ?? "DRAFT") === "REJECTED" ? "Edit" : "Create"}
+                      </button>
                     ) : (
                       <span className="text-gray-300">—</span>
                     )}

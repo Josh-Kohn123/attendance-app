@@ -11,6 +11,12 @@
 import { google } from "googleapis";
 import type { calendar_v3 } from "googleapis";
 import type { DayStatus } from "@orbs/shared";
+import dayjs from "dayjs";
+import utc from "dayjs/plugin/utc.js";
+import timezone from "dayjs/plugin/timezone.js";
+
+dayjs.extend(utc);
+dayjs.extend(timezone);
 
 // ─── Types ───────────────────────────────────────────────────────────
 
@@ -84,7 +90,7 @@ function getCalendarClient(): calendar_v3.Calendar | null {
  *
  * @param calendarId - The shared Google Calendar ID
  * @param date       - The date to check (YYYY-MM-DD)
- * @param timezone   - IANA timezone string (e.g. "Asia/Jerusalem")
+ * @param orgTimezone - IANA timezone string (e.g. "Asia/Jerusalem")
  * @param employeeFirstName - Employee's first name to match in event titles
  * @param employeeFullName  - Employee's full name to match in event titles
  * @returns Absence info if found, or null if no matching absence event
@@ -92,7 +98,7 @@ function getCalendarClient(): calendar_v3.Calendar | null {
 export async function findEmployeeAbsence(
   calendarId: string,
   date: string,
-  timezone: string,
+  orgTimezone: string,
   employeeFirstName: string,
   employeeFullName: string,
 ): Promise<CalendarAbsence | null> {
@@ -100,14 +106,16 @@ export async function findEmployeeAbsence(
   if (!client) return null;
 
   try {
-    const timeMin = `${date}T00:00:00`;
-    const timeMax = `${date}T23:59:59`;
+    // Convert org-local day boundaries to proper UTC ISO strings
+    // e.g. "2026-03-12" in "Asia/Jerusalem" (UTC+2) → 2026-03-11T22:00:00.000Z
+    const dayStartISO = dayjs.tz(`${date} 00:00:00`, orgTimezone).toISOString();
+    const dayEndISO = dayjs.tz(`${date} 23:59:59`, orgTimezone).toISOString();
 
     const response = await client.events.list({
       calendarId,
-      timeMin: new Date(`${timeMin}+00:00`).toISOString(),
-      timeMax: new Date(`${timeMax}+00:00`).toISOString(),
-      timeZone: timezone,
+      timeMin: dayStartISO,
+      timeMax: dayEndISO,
+      timeZone: orgTimezone,
       singleEvents: true,
       orderBy: "startTime",
       maxResults: 100,
@@ -154,17 +162,25 @@ export async function findEmployeeAbsence(
 export async function fetchDayEvents(
   calendarId: string,
   date: string,
-  timezone: string,
+  orgTimezone: string,
 ): Promise<RawCalendarEvent[]> {
   const client = getCalendarClient();
-  if (!client) return [];
+  if (!client) {
+    console.warn("[GoogleCalendar] No calendar client available — cannot fetch events");
+    return [];
+  }
 
   try {
+    // Convert org-local day boundaries to proper UTC ISO strings
+    // e.g. "2026-03-12" in "Asia/Jerusalem" (UTC+2) → 2026-03-11T22:00:00.000Z
+    const dayStartISO = dayjs.tz(`${date} 00:00:00`, orgTimezone).toISOString();
+    const dayEndISO = dayjs.tz(`${date} 23:59:59`, orgTimezone).toISOString();
+
     const response = await client.events.list({
       calendarId,
-      timeMin: new Date(`${date}T00:00:00Z`).toISOString(),
-      timeMax: new Date(`${date}T23:59:59Z`).toISOString(),
-      timeZone: timezone,
+      timeMin: dayStartISO,
+      timeMax: dayEndISO,
+      timeZone: orgTimezone,
       singleEvents: true,
       orderBy: "startTime",
       maxResults: 250,

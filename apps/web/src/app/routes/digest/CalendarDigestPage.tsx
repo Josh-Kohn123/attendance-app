@@ -23,6 +23,8 @@ interface LocalDecision {
   decision: "CONFIRMED" | "DECLINED" | "PENDING";
   resolvedEmployeeId?: string;
   resolvedStatus?: string;
+  startDate?: string;
+  endDate?: string;
 }
 
 const API_BASE = "/api";
@@ -102,17 +104,31 @@ function EntryRow({ entry, digestDate, employees, decision, onChange }: EntryRow
     : `${entry.startDate} → ${entry.endDate}`;
 
   const activeEmployees = employees.filter((e) => e.isActive);
+  const isCreating = decision.decision === "CONFIRMED";
+  const isIgnored = decision.decision === "DECLINED";
+
+  // When "Create Entry" is clicked, pre-populate fields from matched data
+  const handleCreateEntry = () => {
+    onChange({
+      ...decision,
+      decision: "CONFIRMED",
+      resolvedEmployeeId: decision.resolvedEmployeeId ?? entry.proposedEmployeeId ?? undefined,
+      resolvedStatus: decision.resolvedStatus ?? entry.proposedStatus ?? undefined,
+      startDate: decision.startDate ?? entry.startDate,
+      endDate: decision.endDate ?? entry.endDate,
+    });
+  };
 
   return (
-    <div className={`rounded-lg border p-4 ${isLocked ? "bg-gray-50 opacity-70" : "bg-white"}`}>
+    <div className={`rounded-lg border p-4 ${isLocked ? "bg-gray-50 opacity-70" : isIgnored ? "bg-gray-50" : "bg-white"}`}>
       <div className="flex flex-wrap items-start justify-between gap-3">
         <div className="flex-1 min-w-0">
           <div className="flex flex-wrap items-center gap-2 mb-1">
-            <span className="font-medium text-gray-900 truncate">{entry.eventTitle}</span>
+            <span className={`font-medium truncate ${isIgnored ? "text-gray-400 line-through" : "text-gray-900"}`}>
+              {entry.eventTitle}
+            </span>
             <MatchBadge type={entry.matchType} />
-            {entry.startDate !== digestDate && (
-              <span className="text-xs text-gray-500 bg-gray-100 rounded px-1.5 py-0.5">{dateRange}</span>
-            )}
+            <span className="text-xs text-gray-500 bg-gray-100 rounded px-1.5 py-0.5">{dateRange}</span>
           </div>
 
           {/* Already entered */}
@@ -123,92 +139,94 @@ function EntryRow({ entry, digestDate, employees, decision, onChange }: EntryRow
           {/* Inactive employee warning */}
           {entry.matchType === "INACTIVE_EMPLOYEE" && !entry.hasExistingEntry && (
             <p className="text-xs text-red-600 mt-1">
-              This employee is inactive. Decline or reassign to another employee.
+              This employee is inactive. Ignore or reassign to another employee.
             </p>
           )}
 
-          {/* Employee resolution */}
-          {!isLocked && (
-            <div className="mt-3 flex flex-wrap gap-3">
-              {/* Employee selector: show for AMBIGUOUS, UNMATCHED, INACTIVE */}
-              {(entry.matchType === "AMBIGUOUS_NAME" ||
-                entry.matchType === "UNMATCHED" ||
-                entry.matchType === "INACTIVE_EMPLOYEE") &&
-                decision.decision === "CONFIRMED" && (
-                  <div>
-                    <label className="block text-xs text-gray-500 mb-1">Employee</label>
-                    <select
-                      value={decision.resolvedEmployeeId ?? ""}
-                      onChange={(e) => onChange({ ...decision, resolvedEmployeeId: e.target.value || undefined })}
-                      className="rounded-lg border px-2 py-1.5 text-sm min-w-[200px]"
-                    >
-                      <option value="">— Select employee —</option>
-                      {(entry.matchType === "AMBIGUOUS_NAME" ? entry.candidateEmployees : activeEmployees).map(
-                        (emp) => (
-                          <option key={emp.id} value={emp.id}>
-                            {emp.firstName} {emp.lastName}
-                          </option>
-                        ),
-                      )}
-                    </select>
-                  </div>
-                )}
+          {/* Create Entry fields — shown when "Create Entry" is clicked */}
+          {!isLocked && isCreating && (
+            <div className="mt-3 flex flex-wrap gap-3 items-end">
+              {/* Employee selector — always shown */}
+              <div>
+                <label className="block text-xs text-gray-500 mb-1">Employee</label>
+                <select
+                  value={decision.resolvedEmployeeId ?? ""}
+                  onChange={(e) => onChange({ ...decision, resolvedEmployeeId: e.target.value || undefined })}
+                  className="rounded-lg border px-2 py-1.5 text-sm min-w-[200px]"
+                >
+                  <option value="">— Select employee —</option>
+                  {(entry.matchType === "AMBIGUOUS_NAME" && entry.candidateEmployees.length > 0
+                    ? entry.candidateEmployees
+                    : activeEmployees
+                  ).map((emp) => (
+                    <option key={emp.id} value={emp.id}>
+                      {emp.firstName} {emp.lastName}
+                    </option>
+                  ))}
+                </select>
+              </div>
 
-              {/* Status selector: show for UNCLEAR_STATUS, and always for MATCHED as override option */}
-              {(entry.matchType === "UNCLEAR_STATUS" || entry.matchType === "MATCHED") &&
-                decision.decision === "CONFIRMED" && (
-                  <div>
-                    <label className="block text-xs text-gray-500 mb-1">
-                      {entry.matchType === "UNCLEAR_STATUS" ? "Select status" : "Status"}
-                    </label>
-                    <select
-                      value={decision.resolvedStatus ?? entry.proposedStatus ?? ""}
-                      onChange={(e) => onChange({ ...decision, resolvedStatus: e.target.value || undefined })}
-                      className="rounded-lg border px-2 py-1.5 text-sm"
-                    >
-                      {entry.matchType === "UNCLEAR_STATUS" && <option value="">— Select —</option>}
-                      {STATUS_OPTIONS.map((s) => (
-                        <option key={s.value} value={s.value}>{s.label}</option>
-                      ))}
-                    </select>
-                  </div>
-                )}
+              {/* Status selector — always shown */}
+              <div>
+                <label className="block text-xs text-gray-500 mb-1">Status</label>
+                <select
+                  value={decision.resolvedStatus ?? ""}
+                  onChange={(e) => onChange({ ...decision, resolvedStatus: e.target.value || undefined })}
+                  className="rounded-lg border px-2 py-1.5 text-sm"
+                >
+                  <option value="">— Select —</option>
+                  {STATUS_OPTIONS.map((s) => (
+                    <option key={s.value} value={s.value}>{s.label}</option>
+                  ))}
+                </select>
+              </div>
 
-              {/* MATCHED: show proposed employee name as read-only */}
-              {entry.matchType === "MATCHED" && entry.proposedEmployeeName && (
-                <div className="flex items-end">
-                  <span className="text-sm text-gray-700">
-                    <span className="text-gray-400 mr-1">→</span>
-                    {entry.proposedEmployeeName}
-                  </span>
-                </div>
-              )}
+              {/* Date range — always shown */}
+              <div>
+                <label className="block text-xs text-gray-500 mb-1">From</label>
+                <input
+                  type="date"
+                  value={decision.startDate ?? entry.startDate}
+                  onChange={(e) => onChange({ ...decision, startDate: e.target.value })}
+                  className="rounded-lg border px-2 py-1.5 text-sm"
+                />
+              </div>
+              <div>
+                <label className="block text-xs text-gray-500 mb-1">To</label>
+                <input
+                  type="date"
+                  value={decision.endDate ?? entry.endDate}
+                  onChange={(e) => onChange({ ...decision, endDate: e.target.value })}
+                  min={decision.startDate ?? entry.startDate}
+                  className="rounded-lg border px-2 py-1.5 text-sm"
+                />
+              </div>
             </div>
           )}
         </div>
 
-        {/* Confirm / Decline buttons */}
+        {/* Create Entry / Ignore buttons */}
         {!isLocked && (
           <div className="flex gap-2 shrink-0">
             <button
-              onClick={() => onChange({ ...decision, decision: "CONFIRMED" })}
+              onClick={handleCreateEntry}
               className={`rounded-lg px-3 py-1.5 text-sm font-medium transition-colors ${
-                decision.decision === "CONFIRMED"
+                isCreating
                   ? "bg-green-600 text-white"
                   : "border border-green-300 text-green-700 hover:bg-green-50"
               }`}
             >
-              Confirm
+              Create Entry
             </button>
             <button
               onClick={() => onChange({ ...decision, decision: "DECLINED" })}
               className={`rounded-lg px-3 py-1.5 text-sm font-medium transition-colors ${
-                decision.decision === "DECLINED"
-                  ? "bg-red-500 text-white"
-                  : "border border-red-200 text-red-600 hover:bg-red-50"
+                isIgnored
+                  ? "bg-gray-500 text-white"
+                  : "border border-gray-300 text-gray-600 hover:bg-gray-50"
               }`}
             >
-              Decline
+              Ignore
             </button>
           </div>
         )}
@@ -332,9 +350,11 @@ export function CalendarDigestPage() {
     if (decisions[entry.id]) return decisions[entry.id];
     return {
       entryId: entry.id,
-      decision: entry.matchType === "MATCHED" ? "CONFIRMED" : "PENDING",
-      resolvedEmployeeId: entry.resolvedEmployeeId ?? undefined,
+      decision: "PENDING",
+      resolvedEmployeeId: entry.resolvedEmployeeId ?? entry.proposedEmployeeId ?? undefined,
       resolvedStatus: entry.resolvedStatus ?? entry.proposedStatus ?? undefined,
+      startDate: entry.startDate,
+      endDate: entry.endDate,
     };
   };
 
@@ -344,12 +364,18 @@ export function CalendarDigestPage() {
 
   const submitMutation = useMutation({
     mutationFn: () => {
-      const allDecisions = (digest?.entries ?? [])
+      const allDecisions: DigestConfirmDecision[] = (digest?.entries ?? [])
         .filter((e) => !e.hasExistingEntry && e.matchType !== "INACTIVE_EMPLOYEE")
         .map(getDecision)
-        .filter((d): d is DigestConfirmDecision & { decision: "CONFIRMED" | "DECLINED" } =>
-          d.decision === "CONFIRMED" || d.decision === "DECLINED",
-        );
+        .filter((d) => d.decision === "CONFIRMED" || d.decision === "DECLINED")
+        .map((d) => ({
+          entryId: d.entryId,
+          decision: d.decision as "CONFIRMED" | "DECLINED",
+          resolvedEmployeeId: d.resolvedEmployeeId,
+          resolvedStatus: d.resolvedStatus,
+          startDate: d.startDate,
+          endDate: d.endDate,
+        }));
 
       return submitDigest(token!, allDecisions, stagedExtras);
     },
@@ -386,8 +412,8 @@ export function CalendarDigestPage() {
           </div>
           <h2 className="text-lg font-semibold text-gray-900 mb-2">Changes applied</h2>
           <p className="text-gray-500 text-sm">
-            {applied} entr{applied === 1 ? "y" : "ies"} applied
-            {declined > 0 ? `, ${declined} declined` : ""}.
+            {applied} entr{applied === 1 ? "y" : "ies"} created
+            {declined > 0 ? `, ${declined} ignored` : ""}.
           </p>
         </div>
       </div>
@@ -482,10 +508,10 @@ export function CalendarDigestPage() {
           <div>
             {pendingCount > 0 ? (
               <p className="text-sm text-amber-700 font-medium">
-                {pendingCount} entr{pendingCount === 1 ? "y" : "ies"} still pending a decision
+                {pendingCount} event{pendingCount === 1 ? "" : "s"} still need a decision
               </p>
             ) : (
-              <p className="text-sm text-gray-500">All entries reviewed</p>
+              <p className="text-sm text-gray-500">All events reviewed</p>
             )}
           </div>
           <button
