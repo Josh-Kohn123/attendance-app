@@ -5,13 +5,15 @@ import dayjs from "dayjs";
 
 // Status display config — mirrors CalendarPage / AttendanceEvent.notes values
 const STATUS_CONFIG: Record<string, { label: string; badge: string }> = {
-  PRESENT:        { label: "Present",        badge: "bg-green-100 text-green-700" },
-  SICK:           { label: "Sick Leave",     badge: "bg-amber-100 text-amber-700" },
-  CHILD_SICK:     { label: "Child Sick",     badge: "bg-rose-100 text-rose-700" },
-  VACATION:       { label: "Vacation",       badge: "bg-blue-100 text-blue-700" },
-  RESERVES:       { label: "Reserves",       badge: "bg-purple-100 text-purple-700" },
-  HALF_DAY:       { label: "Half Day",       badge: "bg-orange-100 text-orange-700" },
-  WORK_FROM_HOME: { label: "Work From Home", badge: "bg-teal-100 text-teal-700" },
+  PRESENT:        { label: "Present",              badge: "bg-green-100 text-green-700" },
+  SICK:           { label: "Sick Leave",           badge: "bg-amber-100 text-amber-700" },
+  CHILD_SICK:     { label: "Child Sick",           badge: "bg-rose-100 text-rose-700" },
+  VACATION:       { label: "Vacation",             badge: "bg-blue-100 text-blue-700" },
+  RESERVES:       { label: "Reserves",             badge: "bg-purple-100 text-purple-700" },
+  HALF_DAY:       { label: "Half Day Off",         badge: "bg-orange-100 text-orange-700" },
+  WORK_FROM_HOME: { label: "Work From Home",       badge: "bg-teal-100 text-teal-700" },
+  PUBLIC_HOLIDAY: { label: "Public Holiday - Paid", badge: "bg-indigo-100 text-indigo-700" },
+  DAY_OFF:        { label: "Day Off",              badge: "bg-gray-100 text-gray-600" },
 };
 
 function StatusBadge({ notes }: { notes?: string | null }) {

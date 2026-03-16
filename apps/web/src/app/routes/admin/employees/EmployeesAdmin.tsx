@@ -12,10 +12,17 @@ const ROLE_BADGES: Record<Role, string> = {
   admin: "bg-orange-100 text-orange-700",
 };
 
+const WEEKDAYS = ["SUNDAY", "MONDAY", "TUESDAY", "WEDNESDAY", "THURSDAY"] as const;
+const WEEKDAY_LABELS: Record<string, string> = {
+  SUNDAY: "Sunday", MONDAY: "Monday", TUESDAY: "Tuesday", WEDNESDAY: "Wednesday", THURSDAY: "Thursday",
+};
+const PERCENTAGE_OPTIONS = [100, 90, 80, 70, 60, 50, 40, 30, 20, 10];
+
 const emptyForm = {
   email: "", firstName: "", lastName: "", employeeNumber: "",
   phone: "", position: "", startDate: "", role: "employee" as Role,
   departmentId: "", managerId: "",
+  employmentPercentage: 100, daysOff: [] as string[],
 };
 
 type FormState = typeof emptyForm;
@@ -40,6 +47,9 @@ function buildPayload(form: FormState, isNew: boolean) {
   if (form.departmentId) payload.departmentId = form.departmentId;
   if (form.managerId) payload.managerId = form.managerId;
   if (!isNew && form.startDate) payload.startDate = form.startDate;
+
+  payload.employmentPercentage = form.employmentPercentage;
+  payload.daysOff = form.daysOff;
 
   return payload;
 }
@@ -141,6 +151,56 @@ function EmployeeFormFields({
           ))}
         </select>
       </div>
+
+      {/* Employment percentage */}
+      <div>
+        <label className="mb-1 block text-xs font-medium text-gray-600">Employment %</label>
+        <select
+          value={form.employmentPercentage}
+          onChange={(e) => {
+            const pct = Number(e.target.value);
+            onChange({ employmentPercentage: pct, daysOff: pct === 100 ? [] : form.daysOff });
+          }}
+          className="w-full rounded-lg border px-3 py-2 text-sm"
+        >
+          {PERCENTAGE_OPTIONS.map((p) => (
+            <option key={p} value={p}>{p}%</option>
+          ))}
+        </select>
+      </div>
+
+      {/* Days off — shown when not 100% */}
+      {form.employmentPercentage < 100 && (
+        <div className="sm:col-span-2">
+          <label className="mb-1 block text-xs font-medium text-gray-600">
+            Specific days off (select which days the employee does not work)
+          </label>
+          <div className="flex flex-wrap gap-2">
+            {WEEKDAYS.map((day) => {
+              const selected = form.daysOff.includes(day);
+              return (
+                <button
+                  key={day}
+                  type="button"
+                  onClick={() => {
+                    const next = selected
+                      ? form.daysOff.filter((d) => d !== day)
+                      : [...form.daysOff, day];
+                    onChange({ daysOff: next });
+                  }}
+                  className={`rounded-lg border px-3 py-1.5 text-sm font-medium transition-colors ${
+                    selected
+                      ? "border-blue-500 bg-blue-50 text-blue-700"
+                      : "border-gray-300 bg-white text-gray-600 hover:bg-gray-50"
+                  }`}
+                >
+                  {WEEKDAY_LABELS[day]}
+                </button>
+              );
+            })}
+          </div>
+        </div>
+      )}
     </div>
   );
 }
@@ -315,6 +375,8 @@ export function EmployeesAdmin() {
       role: (emp.user?.userRoles?.[0]?.role ?? "employee") as Role,
       departmentId: emp.departmentId ?? "",
       managerId: emp.managerId ?? "",
+      employmentPercentage: emp.employmentPercentage ?? 100,
+      daysOff: emp.daysOff ?? [],
     });
     setEditTarget(emp);
     setFormError(null);

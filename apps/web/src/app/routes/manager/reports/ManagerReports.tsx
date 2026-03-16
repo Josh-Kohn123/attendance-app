@@ -2,6 +2,7 @@ import { useState } from "react";
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import { useNavigate } from "react-router-dom";
 import { api } from "../../../../api/client";
+import { getReportingPeriod } from "@orbs/shared";
 import dayjs from "dayjs";
 import { CheckCircle, Clock, AlertCircle, User, PenLine } from "lucide-react";
 
@@ -36,11 +37,18 @@ function ReportStatusBadge({ status }: { status: string }) {
 export function ManagerReports() {
   const queryClient = useQueryClient();
   const navigate = useNavigate();
-  const [month, setMonth] = useState(dayjs().startOf("month"));
-  const from = month.format("YYYY-MM-DD");
-  const to = month.endOf("month").format("YYYY-MM-DD");
-  const m = month.month() + 1;
-  const y = month.year();
+  const [m, setM] = useState(dayjs().month() + 1);
+  const [y, setY] = useState(dayjs().year());
+
+  // Fetch org config to get monthStartDay (public endpoint, all roles)
+  const { data: orgConfig } = useQuery<{ monthStartDay: number }>({
+    queryKey: ["org-config"],
+    queryFn: () => api.get("/admin/policies/public"),
+  });
+  const monthStartDay = orgConfig?.monthStartDay ?? 26;
+
+  const { from, to } = getReportingPeriod(m, y, monthStartDay);
+  const month = dayjs().year(y).month(m - 1);
 
   /* attendance data */
   const { data: report, isLoading: loadingReport } = useQuery({
@@ -92,11 +100,16 @@ export function ManagerReports() {
     <div className="mx-auto max-w-6xl">
       {/* Header + month nav */}
       <div className="mb-4 flex items-center justify-between">
-        <h3 className="text-lg font-semibold">Team Report — {month.format("MMMM YYYY")}</h3>
+        <div>
+          <h3 className="text-lg font-semibold">Team Report — {month.format("MMMM YYYY")}</h3>
+          {monthStartDay !== 1 && (
+            <p className="text-xs text-gray-400">{from} to {to}</p>
+          )}
+        </div>
         <div className="flex gap-2">
-          <button onClick={() => setMonth((m) => m.subtract(1, "month"))} className="rounded-lg border px-3 py-1 text-sm hover:bg-gray-50">&larr;</button>
-          <button onClick={() => setMonth(dayjs().startOf("month"))} className="rounded-lg border px-3 py-1 text-sm hover:bg-gray-50">This month</button>
-          <button onClick={() => setMonth((m) => m.add(1, "month"))} className="rounded-lg border px-3 py-1 text-sm hover:bg-gray-50">&rarr;</button>
+          <button onClick={() => { if (m === 1) { setM(12); setY(y - 1); } else setM(m - 1); }} className="rounded-lg border px-3 py-1 text-sm hover:bg-gray-50">&larr;</button>
+          <button onClick={() => { setM(dayjs().month() + 1); setY(dayjs().year()); }} className="rounded-lg border px-3 py-1 text-sm hover:bg-gray-50">This month</button>
+          <button onClick={() => { if (m === 12) { setM(1); setY(y + 1); } else setM(m + 1); }} className="rounded-lg border px-3 py-1 text-sm hover:bg-gray-50">&rarr;</button>
         </div>
       </div>
 
@@ -146,8 +159,10 @@ export function ManagerReports() {
                 <th className="p-3 font-medium text-center">Child Sick</th>
                 <th className="p-3 font-medium text-center">Vacation</th>
                 <th className="p-3 font-medium text-center">Reserves</th>
-                <th className="p-3 font-medium text-center">Half Day</th>
+                <th className="p-3 font-medium text-center">Half Day Off</th>
                 <th className="p-3 font-medium text-center">WFH</th>
+                <th className="p-3 font-medium text-center">Public Holiday</th>
+                <th className="p-3 font-medium text-center">Day Off</th>
                 <th className="p-3 font-medium text-center">Report Status</th>
                 <th className="p-3 font-medium text-center">Actions</th>
               </tr>
@@ -169,6 +184,8 @@ export function ManagerReports() {
                   <td className="p-3 text-center"><StatBadge count={row.reserves ?? 0} cls="bg-purple-100 text-purple-700" /></td>
                   <td className="p-3 text-center"><StatBadge count={row.halfDay ?? 0} cls="bg-orange-100 text-orange-700" /></td>
                   <td className="p-3 text-center"><StatBadge count={row.workFromHome ?? 0} cls="bg-teal-100 text-teal-700" /></td>
+                  <td className="p-3 text-center"><StatBadge count={row.publicHoliday ?? 0} cls="bg-indigo-100 text-indigo-700" /></td>
+                  <td className="p-3 text-center"><StatBadge count={row.dayOff ?? 0} cls="bg-gray-100 text-gray-600" /></td>
                   <td className="p-3 text-center">
                     <ReportStatusBadge status={row.status ?? "DRAFT"} />
                   </td>

@@ -279,21 +279,6 @@ export async function monthlyReportRoutes(app: FastifyInstance) {
         },
       });
 
-      // Notify the manager — but skip emailing when the manager is the submitter themselves
-      // (self-managing users see their own report appear in their review queue automatically)
-      if (resolvedManager.id !== request.currentUserId) {
-        email.notifyMonthlyReportSubmitted({
-          orgId: request.currentOrgId!,
-          managerEmail: resolvedManager.email,
-          managerName: resolvedManager.displayName,
-          employeeName: `${employee.firstName} ${employee.lastName}`,
-          month,
-          year,
-        }).catch((err: any) => {
-          console.error("[monthly-reports] Failed to send submission email:", err?.message ?? err);
-        });
-      }
-
       await auditLog(request, "MONTHLY_REPORT_SUBMITTED", "monthly_report", report.id, null, { month, year, status: "SUBMITTED" });
 
       return { ok: true, data: report };
@@ -428,19 +413,6 @@ export async function monthlyReportRoutes(app: FastifyInstance) {
           lockedAt: new Date(),
         },
       });
-
-      // Notify employee
-      const reviewer = await prisma.user.findUnique({ where: { id: request.currentUserId! } });
-      if (report.employee && reviewer) {
-        email.notifyEmployee({
-          orgId: request.currentOrgId!,
-          employeeEmail: report.employee.email,
-          employeeName: `${report.employee.firstName} ${report.employee.lastName}`,
-          eventType: "MONTHLY_REPORT",
-          status: "APPROVED",
-          reviewerName: reviewer.displayName,
-        }).catch(() => {});
-      }
 
       await auditLog(request, "MONTHLY_REPORT_APPROVED", "monthly_report", id, { status: "SUBMITTED" }, { status: "APPROVED" });
 
@@ -643,20 +615,6 @@ export async function monthlyReportRoutes(app: FastifyInstance) {
           submittedAt: new Date(),
         },
       });
-
-      // Notify manager (unless submitter is the manager themselves)
-      if (resolvedManager && resolvedManager.id !== request.currentUserId) {
-        email.notifyMonthlyReportSubmitted({
-          orgId: request.currentOrgId!,
-          managerEmail: resolvedManager.email,
-          managerName: resolvedManager.displayName,
-          employeeName: `${employee.firstName} ${employee.lastName}`,
-          month,
-          year,
-        }).catch((err: any) => {
-          console.error("[monthly-reports] Failed to send submission email:", err?.message ?? err);
-        });
-      }
 
       await auditLog(
         request,

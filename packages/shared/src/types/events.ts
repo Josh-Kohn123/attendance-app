@@ -8,6 +8,8 @@ export const DAY_STATUSES = [
   "RESERVES",
   "HALF_DAY",
   "WORK_FROM_HOME",
+  "PUBLIC_HOLIDAY",
+  "DAY_OFF",
 ] as const;
 
 export type DayStatus = (typeof DAY_STATUSES)[number];

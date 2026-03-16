@@ -331,8 +331,12 @@ async function sendDigestEmail(
     SICK: "Sick",
     VACATION: "Vacation",
     RESERVES: "Reserves (Miluim)",
-    HALF_DAY: "Half Day",
+    HALF_DAY: "Half Day Off",
     PRESENT: "Present",
+    WORK_FROM_HOME: "Work From Home",
+    CHILD_SICK: "Child Sick",
+    PUBLIC_HOLIDAY: "Public Holiday - Paid",
+    DAY_OFF: "Day Off",
   };
 
   const rows = entries

@@ -143,16 +143,6 @@ export async function leaveRoutes(app: FastifyInstance) {
         data: { status: "APPROVED", reviewedById: request.currentUserId!, reviewedAt: new Date() },
       });
 
-      const reviewer = await prisma.user.findUnique({ where: { id: request.currentUserId! } });
-      email.notifyEmployee({
-        orgId: request.currentOrgId!,
-        employeeEmail: leave.employee.email,
-        employeeName: `${leave.employee.firstName} ${leave.employee.lastName}`,
-        eventType: `LEAVE_${leave.type}`,
-        status: "APPROVED",
-        reviewerName: reviewer?.displayName ?? "Manager",
-      }).catch(() => {});
-
       return { ok: true, data: updated };
     }
   );

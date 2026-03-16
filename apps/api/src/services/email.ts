@@ -376,4 +376,85 @@ export const email = {
       ),
     });
   },
+
+  /** Send manager summary email with employee attendance data */
+  async sendManagerSummary(data: {
+    managerEmail: string;
+    managerName: string;
+    orgName: string;
+    period: string;
+    employees: Array<{
+      name: string;
+      department: string;
+      present: number;
+      sick: number;
+      childSick: number;
+      vacation: number;
+      reserves: number;
+      halfDay: number;
+      workFromHome: number;
+      publicHoliday: number;
+      dayOff: number;
+      reportStatus: string;
+    }>;
+  }) {
+    const rows = data.employees
+      .map(
+        (emp) => `
+        <tr>
+          <td style="padding:8px 10px;border-bottom:1px solid #e5e7eb;color:#111827;font-size:13px;">${emp.name}</td>
+          <td style="padding:8px 10px;border-bottom:1px solid #e5e7eb;color:#6b7280;font-size:13px;">${emp.department}</td>
+          <td style="padding:8px 10px;border-bottom:1px solid #e5e7eb;text-align:center;font-size:13px;">${emp.present}</td>
+          <td style="padding:8px 10px;border-bottom:1px solid #e5e7eb;text-align:center;font-size:13px;">${emp.sick}</td>
+          <td style="padding:8px 10px;border-bottom:1px solid #e5e7eb;text-align:center;font-size:13px;">${emp.childSick}</td>
+          <td style="padding:8px 10px;border-bottom:1px solid #e5e7eb;text-align:center;font-size:13px;">${emp.vacation}</td>
+          <td style="padding:8px 10px;border-bottom:1px solid #e5e7eb;text-align:center;font-size:13px;">${emp.reserves}</td>
+          <td style="padding:8px 10px;border-bottom:1px solid #e5e7eb;text-align:center;font-size:13px;">${emp.halfDay}</td>
+          <td style="padding:8px 10px;border-bottom:1px solid #e5e7eb;text-align:center;font-size:13px;">${emp.workFromHome}</td>
+          <td style="padding:8px 10px;border-bottom:1px solid #e5e7eb;text-align:center;font-size:13px;">${emp.publicHoliday}</td>
+          <td style="padding:8px 10px;border-bottom:1px solid #e5e7eb;text-align:center;font-size:13px;">${emp.dayOff}</td>
+          <td style="padding:8px 10px;border-bottom:1px solid #e5e7eb;text-align:center;font-size:13px;color:${emp.reportStatus === "APPROVED" ? "#059669" : emp.reportStatus === "SUBMITTED" ? "#d97706" : "#6b7280"};">${emp.reportStatus}</td>
+        </tr>`,
+      )
+      .join("");
+
+    return sendEmail({
+      to: data.managerEmail,
+      subject: `[Attendance] ${data.orgName} — Summary for ${data.period}`,
+      html: wrapTemplate(
+        `Attendance Summary — ${data.period}`,
+        `
+        <p style="color:#374151;line-height:1.6;">
+          Hi ${data.managerName.split(" ")[0]}, here is the attendance summary for your team for <strong>${data.period}</strong>.
+        </p>
+        <div style="overflow-x:auto;">
+          <table width="100%" cellpadding="0" cellspacing="0" style="border:1px solid #e5e7eb;border-radius:8px;overflow:hidden;font-size:12px;margin-top:16px;">
+            <thead>
+              <tr style="background-color:#f9fafb;">
+                <th style="padding:8px 10px;text-align:left;font-size:11px;color:#6b7280;font-weight:600;text-transform:uppercase;">Employee</th>
+                <th style="padding:8px 10px;text-align:left;font-size:11px;color:#6b7280;font-weight:600;text-transform:uppercase;">Dept</th>
+                <th style="padding:8px 10px;text-align:center;font-size:11px;color:#6b7280;font-weight:600;">Present</th>
+                <th style="padding:8px 10px;text-align:center;font-size:11px;color:#6b7280;font-weight:600;">Sick</th>
+                <th style="padding:8px 10px;text-align:center;font-size:11px;color:#6b7280;font-weight:600;">Child Sick</th>
+                <th style="padding:8px 10px;text-align:center;font-size:11px;color:#6b7280;font-weight:600;">Vacation</th>
+                <th style="padding:8px 10px;text-align:center;font-size:11px;color:#6b7280;font-weight:600;">Reserves</th>
+                <th style="padding:8px 10px;text-align:center;font-size:11px;color:#6b7280;font-weight:600;">Half Day Off</th>
+                <th style="padding:8px 10px;text-align:center;font-size:11px;color:#6b7280;font-weight:600;">WFH</th>
+                <th style="padding:8px 10px;text-align:center;font-size:11px;color:#6b7280;font-weight:600;">Holiday</th>
+                <th style="padding:8px 10px;text-align:center;font-size:11px;color:#6b7280;font-weight:600;">Day Off</th>
+                <th style="padding:8px 10px;text-align:center;font-size:11px;color:#6b7280;font-weight:600;">Report</th>
+              </tr>
+            </thead>
+            <tbody>${rows}</tbody>
+          </table>
+        </div>
+        <p style="margin-top:24px;">
+          <a href="${process.env.CORS_ORIGIN}/manager/reports"
+             style="display:inline-block;background-color:#2563eb;color:#ffffff;padding:10px 24px;border-radius:8px;text-decoration:none;font-weight:500;">
+            View Full Reports
+          </a>
+        </p>`
+      ),
+    });
+  },
 };

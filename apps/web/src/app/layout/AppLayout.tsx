@@ -10,6 +10,8 @@ import {
   Calendar,
   Building2,
   ScrollText,
+  CalendarSearch,
+  Share2,
   LogOut,
   Menu,
   X,
@@ -36,6 +38,8 @@ const navItems: NavItem[] = [
   { to: "/admin/policies", label: "Policies", icon: <Settings size={20} />, roles: ["admin"] },
   { to: "/admin/holidays", label: "Holidays", icon: <Calendar size={20} />, roles: ["admin"] },
   { to: "/admin/departments", label: "Departments", icon: <Building2 size={20} />, roles: ["admin"] },
+  { to: "/admin/calendar-digest", label: "Calendar Digest", icon: <CalendarSearch size={20} />, roles: ["admin"] },
+  { to: "/admin/share", label: "Share", icon: <Share2 size={20} />, roles: ["admin"] },
   { to: "/admin/audit", label: "Audit Log", icon: <ScrollText size={20} />, roles: ["admin"] },
 ];
 

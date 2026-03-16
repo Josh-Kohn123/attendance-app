@@ -1,16 +1,18 @@
 /**
- * Calendar Digest Routes (token-authenticated, no JWT required)
+ * Calendar Digest Routes
  *
- * GET  /calendar-digest/:token  — fetch digest data for the review page
- * POST /calendar-digest/:token  — submit admin decisions + apply attendance records
+ * Token-authenticated (legacy):
+ *   GET  /calendar-digest/:token  — fetch digest data for the review page
+ *   POST /calendar-digest/:token  — submit admin decisions + apply attendance records
  *
- * Authentication is the unguessable UUID token embedded in the link.
- * These routes are intentionally unauthenticated so the admin can
- * open the review page directly from the email without logging in first.
+ * JWT-authenticated (admin UI):
+ *   GET  /calendar-digest/fetch?from=YYYY-MM-DD&to=YYYY-MM-DD — fetch live calendar events
+ *   POST /calendar-digest/apply — apply confirmed entries to attendance records
  */
 
 import type { FastifyInstance } from "fastify";
 import { prisma } from "@orbs/db";
+import { requirePermission } from "@orbs/authz";
 import dayjs from "dayjs";
 import crypto from "crypto";
 import type {
@@ -19,11 +21,190 @@ import type {
   DigestEmployee,
   CalendarDigestData,
 } from "@orbs/shared";
+import { fetchEventsInRange, extractAbsenceStatus } from "../services/google-calendar.js";
 
 // Weekend days in Israeli work week (no attendance records created)
 const WEEKEND_DAYS = new Set([5, 6]); // Friday, Saturday
 
 export async function calendarDigestRoutes(app: FastifyInstance) {
+  // ═══════════════════════════════════════════════════════════════════
+  // Admin-authenticated endpoints (JWT required)
+  // ═══════════════════════════════════════════════════════════════════
+
+  /**
+   * GET /calendar-digest/fetch?from=YYYY-MM-DD&to=YYYY-MM-DD
+   * Fetches live Google Calendar events and matches them against employees.
+   */
+  app.get(
+    "/fetch",
+    { preHandler: [requirePermission("admin.policies")] },
+    async (request, reply) => {
+      const { from, to } = request.query as { from?: string; to?: string };
+      if (!from || !to) {
+        return reply.status(400).send({ ok: false, error: { code: "VALIDATION", message: "from and to required" } });
+      }
+
+      const calendarId = process.env.GOOGLE_CALENDAR_ID;
+      if (!calendarId) {
+        return reply.status(500).send({ ok: false, error: { code: "CONFIG_ERROR", message: "GOOGLE_CALENDAR_ID not configured" } });
+      }
+
+      const org = await prisma.org.findUnique({ where: { id: request.currentOrgId! } });
+      if (!org) {
+        return reply.status(404).send({ ok: false, error: { code: "NOT_FOUND", message: "Org not found" } });
+      }
+
+      // Fetch live events from Google Calendar
+      const events = await fetchEventsInRange(calendarId, from, to, org.timezone);
+
+      // Fetch all employees for matching
+      const employees = await prisma.employee.findMany({
+        where: { orgId: org.id },
+        select: { id: true, firstName: true, lastName: true, isActive: true },
+      });
+
+      // Fetch existing attendance records in the range to check what's already applied
+      const existingAttendance = await prisma.attendanceEvent.findMany({
+        where: {
+          orgId: org.id,
+          eventType: "CLOCK_IN",
+          source: "GOOGLE_CALENDAR",
+          serverTimestamp: {
+            gte: new Date(`${from}T00:00:00Z`),
+            lte: new Date(`${to}T23:59:59Z`),
+          },
+        },
+        select: { employeeId: true, serverTimestamp: true, notes: true },
+      });
+
+      // Build a set of "employeeId:date" for quick lookup
+      const appliedSet = new Set(
+        existingAttendance.map((a) => `${a.employeeId}:${a.serverTimestamp.toISOString().slice(0, 10)}`),
+      );
+
+      // Match events to employees
+      const entries = events.map((event) => {
+        const titleLower = event.title.toLowerCase();
+
+        const matched = employees.filter((emp) => {
+          const first = emp.firstName.toLowerCase();
+          const full = `${emp.firstName} ${emp.lastName}`.toLowerCase();
+          return titleLower.includes(first) || titleLower.includes(full);
+        });
+
+        let matchType: string;
+        let proposedEmployeeId: string | null = null;
+        let proposedStatus: string | null = null;
+        let candidateEmployeeIds: string[] = [];
+        let hasExistingEntry = false;
+
+        if (matched.length === 0) {
+          matchType = "UNMATCHED";
+        } else if (matched.length > 1) {
+          matchType = "AMBIGUOUS_NAME";
+          candidateEmployeeIds = matched.map((e) => e.id);
+        } else {
+          const employee = matched[0];
+          proposedEmployeeId = employee.id;
+
+          if (!employee.isActive) {
+            matchType = "INACTIVE_EMPLOYEE";
+          } else {
+            const status = extractAbsenceStatus(titleLower);
+            if (status) {
+              matchType = "MATCHED";
+              proposedStatus = status;
+            } else {
+              matchType = "UNCLEAR_STATUS";
+            }
+          }
+
+          // Check if already applied for all dates in the event range
+          const workdays = getWorkdaysInRange(event.startDate, event.endDate);
+          hasExistingEntry = workdays.length > 0 && workdays.every((d) => appliedSet.has(`${employee.id}:${d}`));
+        }
+
+        return {
+          eventId: event.id,
+          eventTitle: event.title,
+          startDate: event.startDate,
+          endDate: event.endDate,
+          matchType,
+          proposedEmployeeId,
+          proposedStatus,
+          candidateEmployeeIds,
+          hasExistingEntry,
+        };
+      });
+
+      return {
+        ok: true,
+        data: {
+          entries,
+          employees: employees.map((e) => ({
+            id: e.id,
+            firstName: e.firstName,
+            lastName: e.lastName,
+            isActive: e.isActive,
+          })),
+        },
+      };
+    },
+  );
+
+  /**
+   * POST /calendar-digest/apply
+   * Apply confirmed calendar entries to attendance records.
+   */
+  app.post(
+    "/apply",
+    { preHandler: [requirePermission("admin.policies")] },
+    async (request, reply) => {
+      const { entries = [], additionalEntries = [] } = request.body as {
+        entries?: Array<{
+          employeeId: string;
+          status: string;
+          startDate: string;
+          endDate: string;
+        }>;
+        additionalEntries?: Array<{
+          employeeId: string;
+          status: string;
+          startDate: string;
+          endDate: string;
+        }>;
+      };
+
+      const systemUserId = process.env.SYSTEM_USER_ID;
+      if (!systemUserId) {
+        return reply.status(500).send({ ok: false, error: { code: "CONFIG_ERROR", message: "SYSTEM_USER_ID not configured" } });
+      }
+
+      let applied = 0;
+
+      const allEntries = [...entries, ...additionalEntries];
+      for (const entry of allEntries) {
+        const employee = await prisma.employee.findUnique({
+          where: { id: entry.employeeId },
+          select: { id: true, siteId: true, orgId: true, isActive: true },
+        });
+
+        if (!employee || !employee.isActive || employee.orgId !== request.currentOrgId!) continue;
+
+        const workdays = getWorkdaysInRange(entry.startDate, entry.endDate);
+        for (const date of workdays) {
+          await applyAttendanceIfAbsent(request.currentOrgId!, employee, date, entry.status, systemUserId);
+        }
+        applied++;
+      }
+
+      return { ok: true, data: { applied } };
+    },
+  );
+
+  // ═══════════════════════════════════════════════════════════════════
+  // Token-authenticated endpoints (legacy digest email links)
+  // ═══════════════════════════════════════════════════════════════════
   // ─── GET /calendar-digest/:token ─────────────────────────────
   // Returns digest data with live hasExistingEntry checks.
 

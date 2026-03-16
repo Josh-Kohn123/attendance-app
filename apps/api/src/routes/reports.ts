@@ -18,8 +18,10 @@ const STATUS_EVENT_LABEL: Record<string, string> = {
   CHILD_SICK: "Child Sick",
   VACATION: "Vacation",
   RESERVES: "Military service",
-  HALF_DAY: "Half Day",
+  HALF_DAY: "Half Day Off",
   WORK_FROM_HOME: "Work From Home",
+  PUBLIC_HOLIDAY: "Public Holiday - Paid",
+  DAY_OFF: "Day Off",
 };
 
 /** Check if a date is an Israeli weekend (Fri=5, Sat=6) */
@@ -63,9 +65,9 @@ export async function reportRoutes(app: FastifyInstance) {
       });
 
       // Group by employee and status (stored in notes field)
-      const eventsByEmployee = new Map<string, { total: number; present: number; sick: number; childSick: number; vacation: number; reserves: number; halfDay: number; workFromHome: number }>();
+      const eventsByEmployee = new Map<string, { total: number; present: number; sick: number; childSick: number; vacation: number; reserves: number; halfDay: number; workFromHome: number; publicHoliday: number; dayOff: number }>();
       for (const event of events) {
-        const existing = eventsByEmployee.get(event.employeeId) ?? { total: 0, present: 0, sick: 0, childSick: 0, vacation: 0, reserves: 0, halfDay: 0, workFromHome: 0 };
+        const existing = eventsByEmployee.get(event.employeeId) ?? { total: 0, present: 0, sick: 0, childSick: 0, vacation: 0, reserves: 0, halfDay: 0, workFromHome: 0, publicHoliday: 0, dayOff: 0 };
         const status = ((event.notes as string) ?? "PRESENT").toUpperCase();
         existing.total += 1;
         if (status === "SICK") existing.sick += 1;
@@ -74,12 +76,14 @@ export async function reportRoutes(app: FastifyInstance) {
         else if (status === "RESERVES") existing.reserves += 1;
         else if (status === "HALF_DAY") existing.halfDay += 1;
         else if (status === "WORK_FROM_HOME") existing.workFromHome += 1;
+        else if (status === "PUBLIC_HOLIDAY") existing.publicHoliday += 1;
+        else if (status === "DAY_OFF") existing.dayOff += 1;
         else existing.present += 1; // PRESENT or anything unrecognised
         eventsByEmployee.set(event.employeeId, existing);
       }
 
       const summary = employees.map((emp) => {
-        const counts = eventsByEmployee.get(emp.id) ?? { total: 0, present: 0, sick: 0, childSick: 0, vacation: 0, reserves: 0, halfDay: 0, workFromHome: 0 };
+        const counts = eventsByEmployee.get(emp.id) ?? { total: 0, present: 0, sick: 0, childSick: 0, vacation: 0, reserves: 0, halfDay: 0, workFromHome: 0, publicHoliday: 0, dayOff: 0 };
         return {
           employeeId: emp.id,
           name: `${emp.firstName} ${emp.lastName}`,
@@ -93,6 +97,8 @@ export async function reportRoutes(app: FastifyInstance) {
           reserves: counts.reserves,
           halfDay: counts.halfDay,
           workFromHome: counts.workFromHome,
+          publicHoliday: counts.publicHoliday,
+          dayOff: counts.dayOff,
         };
       });
 
@@ -195,9 +201,9 @@ export async function reportRoutes(app: FastifyInstance) {
       }
 
       // Also build summary counts per employee
-      const empSummary = new Map<string, { total: number; present: number; sick: number; childSick: number; vacation: number; reserves: number; halfDay: number; workFromHome: number }>();
+      const empSummary = new Map<string, { total: number; present: number; sick: number; childSick: number; vacation: number; reserves: number; halfDay: number; workFromHome: number; publicHoliday: number; dayOff: number }>();
       for (const ev of events) {
-        const c = empSummary.get(ev.employeeId) ?? { total: 0, present: 0, sick: 0, childSick: 0, vacation: 0, reserves: 0, halfDay: 0, workFromHome: 0 };
+        const c = empSummary.get(ev.employeeId) ?? { total: 0, present: 0, sick: 0, childSick: 0, vacation: 0, reserves: 0, halfDay: 0, workFromHome: 0, publicHoliday: 0, dayOff: 0 };
         const status = ((ev.notes as string) ?? "PRESENT").toUpperCase();
         c.total += 1;
         if (status === "SICK") c.sick += 1;
@@ -206,6 +212,8 @@ export async function reportRoutes(app: FastifyInstance) {
         else if (status === "RESERVES") c.reserves += 1;
         else if (status === "HALF_DAY") c.halfDay += 1;
         else if (status === "WORK_FROM_HOME") c.workFromHome += 1;
+        else if (status === "PUBLIC_HOLIDAY") c.publicHoliday += 1;
+        else if (status === "DAY_OFF") c.dayOff += 1;
         else c.present += 1;
         empSummary.set(ev.employeeId, c);
       }
@@ -309,7 +317,7 @@ export async function reportRoutes(app: FastifyInstance) {
         let totalReserves = 0;
 
         for (const emp of employees) {
-          const c = empSummary.get(emp.id) ?? { total: 0, present: 0, sick: 0, childSick: 0, vacation: 0, reserves: 0, halfDay: 0, workFromHome: 0 };
+          const c = empSummary.get(emp.id) ?? { total: 0, present: 0, sick: 0, childSick: 0, vacation: 0, reserves: 0, halfDay: 0, workFromHome: 0, publicHoliday: 0, dayOff: 0 };
           const attendanceDays = c.total;
           const attendanceHours = `${String(c.present * 8 + c.halfDay * 4).padStart(1, "0")}:00`;
 
@@ -407,7 +415,7 @@ export async function reportRoutes(app: FastifyInstance) {
               let entry = "", exit2 = "", hours = "", event = "";
               if (!weekend && status) {
                 if (status === "PRESENT") { entry = "10:00"; exit2 = "18:00"; hours = "08:00"; }
-                else if (status === "HALF_DAY") { entry = "10:00"; exit2 = "14:00"; hours = "04:00"; event = "Half Day"; }
+                else if (status === "HALF_DAY") { entry = "10:00"; exit2 = "14:00"; hours = "04:00"; event = "Half Day Off"; }
                 else { event = STATUS_EVENT_LABEL[status] ?? status; }
               }
 
@@ -427,8 +435,8 @@ export async function reportRoutes(app: FastifyInstance) {
           doc.fontSize(9).font("Helvetica").text(`Period: ${period}`, { align: "center" });
           doc.moveDown(0.5);
 
-          const sumCols = ["Employee", "Days", "Hours", "Vacation", "Sick", "Reserves", "Half Day"];
-          const sumWidths = [160, 50, 60, 60, 50, 60, 60];
+          const sumCols = ["Employee", "Days", "Hours", "Vacation", "Sick", "Reserves", "Half Day Off", "Public Holiday", "Day Off"];
+          const sumWidths = [130, 40, 50, 50, 40, 50, 55, 60, 40];
 
           y = doc.y;
           doc.fontSize(8).font("Helvetica-Bold");
@@ -444,9 +452,9 @@ export async function reportRoutes(app: FastifyInstance) {
           doc.font("Helvetica").fontSize(8);
           for (const emp of employees) {
             if (y > 540) { doc.addPage(); y = 40; }
-            const c = empSummary.get(emp.id) ?? { total: 0, present: 0, sick: 0, childSick: 0, vacation: 0, reserves: 0, halfDay: 0, workFromHome: 0 };
+            const c = empSummary.get(emp.id) ?? { total: 0, present: 0, sick: 0, childSick: 0, vacation: 0, reserves: 0, halfDay: 0, workFromHome: 0, publicHoliday: 0, dayOff: 0 };
             const hrs = `${c.present * 8 + c.halfDay * 4}:00`;
-            const vals = [`${emp.lastName} ${emp.firstName}`, String(c.total), hrs, String(c.vacation), String(c.sick), String(c.reserves), String(c.halfDay), String(c.childSick), String(c.workFromHome)];
+            const vals = [`${emp.lastName} ${emp.firstName}`, String(c.total), hrs, String(c.vacation), String(c.sick), String(c.reserves), String(c.halfDay), String(c.publicHoliday), String(c.dayOff)];
             x = startX;
             for (let i = 0; i < vals.length; i++) {
               doc.text(vals[i], x, y, { width: sumWidths[i], align: "left" });
@@ -530,5 +538,118 @@ export async function reportRoutes(app: FastifyInstance) {
 
       return { ok: true, data: signature };
     }
+  );
+
+  // ─── Send Manager Summaries ────────────────────────────────────────
+
+  /**
+   * POST /reports/send-manager-summaries
+   * Sends attendance summary emails to all managers for a given period.
+   * Body: { from, to, month, year }
+   */
+  app.post(
+    "/send-manager-summaries",
+    { preHandler: [requirePermission("admin.policies")] },
+    async (request, reply) => {
+      const { from, to, month, year } = request.body as {
+        from: string;
+        to: string;
+        month: number;
+        year: number;
+      };
+
+      if (!from || !to || !month || !year) {
+        return reply.status(400).send({ ok: false, error: { code: "VALIDATION", message: "from, to, month, year required" } });
+      }
+
+      const org = await prisma.org.findUnique({ where: { id: request.currentOrgId! } });
+      if (!org) {
+        return reply.status(404).send({ ok: false, error: { code: "NOT_FOUND", message: "Org not found" } });
+      }
+
+      // Find all managers (users with manager role)
+      const managerRoles = await prisma.userRole.findMany({
+        where: { role: "manager", user: { orgId: request.currentOrgId! } },
+        include: { user: { select: { id: true, displayName: true, email: true } } },
+      });
+
+      const period = `${new Date(year, month - 1).toLocaleString("default", { month: "long" })} ${year}`;
+      let sent = 0;
+
+      for (const { user: manager } of managerRoles) {
+        // Get this manager's direct reports
+        const employees = await prisma.employee.findMany({
+          where: { orgId: request.currentOrgId!, isActive: true, managerId: manager.id },
+          include: { department: { select: { name: true } } },
+          orderBy: { lastName: "asc" },
+        });
+
+        if (employees.length === 0) continue;
+
+        // Get attendance data for each employee
+        const empIds = employees.map((e) => e.id);
+
+        const events = await prisma.attendanceEvent.findMany({
+          where: {
+            orgId: request.currentOrgId!,
+            employeeId: { in: empIds },
+            eventType: "CLOCK_IN",
+            serverTimestamp: {
+              gte: new Date(`${from}T00:00:00Z`),
+              lte: new Date(`${to}T23:59:59Z`),
+            },
+          },
+          select: { employeeId: true, notes: true },
+        });
+
+        // Get monthly report statuses
+        const reports = await prisma.monthlyReport.findMany({
+          where: {
+            orgId: request.currentOrgId!,
+            employeeId: { in: empIds },
+            month,
+            year,
+          },
+          select: { employeeId: true, status: true },
+        });
+        const reportMap = new Map(reports.map((r) => [r.employeeId, r.status]));
+
+        // Tally per employee
+        const empSummaries = employees.map((emp) => {
+          const empEvents = events.filter((e) => e.employeeId === emp.id);
+          const counts = { present: 0, sick: 0, childSick: 0, vacation: 0, reserves: 0, halfDay: 0, workFromHome: 0, publicHoliday: 0, dayOff: 0 };
+          for (const ev of empEvents) {
+            const status = ev.notes ?? "PRESENT";
+            if (status === "PRESENT") counts.present++;
+            else if (status === "SICK") counts.sick++;
+            else if (status === "CHILD_SICK") counts.childSick++;
+            else if (status === "VACATION") counts.vacation++;
+            else if (status === "RESERVES") counts.reserves++;
+            else if (status === "HALF_DAY") counts.halfDay++;
+            else if (status === "WORK_FROM_HOME") counts.workFromHome++;
+            else if (status === "PUBLIC_HOLIDAY") counts.publicHoliday++;
+            else if (status === "DAY_OFF") counts.dayOff++;
+            else counts.present++;
+          }
+          return {
+            name: `${emp.firstName} ${emp.lastName}`,
+            department: emp.department?.name ?? "-",
+            ...counts,
+            reportStatus: reportMap.get(emp.id) ?? "DRAFT",
+          };
+        });
+
+        await email.sendManagerSummary({
+          managerEmail: manager.email,
+          managerName: manager.displayName,
+          orgName: org.name,
+          period,
+          employees: empSummaries,
+        });
+        sent++;
+      }
+
+      return { ok: true, data: { sent } };
+    },
   );
 }
