@@ -1,5 +1,5 @@
 {
-  "buildCommand": "npm run build -w packages/shared && npm run build -w packages/authz && npm run db:generate && npm run build -w apps/web",
+  "buildCommand": "npm run build -w packages/shared && npm run build -w packages/authz && npm run db:generate && npm run build -w packages/db && npm run build -w apps/web",
   "outputDirectory": "apps/web/dist",
   "framework": "vite",
   "rewrites": [
