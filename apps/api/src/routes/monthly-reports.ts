@@ -5,6 +5,7 @@ import {
   MonthlyReportSubmitSchema,
   MonthlyReportRejectSchema,
   MonthlyReportQuerySchema,
+  NotifySubmitRequestSchema,
 } from "@orbs/shared";
 import { email } from "../services/email.js";
 import { auditLog } from "../services/audit.js";
@@ -178,6 +179,7 @@ export async function monthlyReportRoutes(app: FastifyInstance) {
           employeeName: `${emp.firstName} ${emp.lastName}`,
           employeeEmail: emp.email,
           departmentName: emp.department?.name ?? null,
+          requireSelfSubmit: emp.requireSelfSubmit,
           isSelf: !!isSelf,
           reportId: report?.id ?? null,
           status: report?.status ?? "DRAFT",
@@ -278,21 +280,6 @@ export async function monthlyReportRoutes(app: FastifyInstance) {
           submittedAt: new Date(),
         },
       });
-
-      // Notify the manager — but skip emailing when the manager is the submitter themselves
-      // (self-managing users see their own report appear in their review queue automatically)
-      if (resolvedManager.id !== request.currentUserId) {
-        email.notifyMonthlyReportSubmitted({
-          orgId: request.currentOrgId!,
-          managerEmail: resolvedManager.email,
-          managerName: resolvedManager.displayName,
-          employeeName: `${employee.firstName} ${employee.lastName}`,
-          month,
-          year,
-        }).catch((err: any) => {
-          console.error("[monthly-reports] Failed to send submission email:", err?.message ?? err);
-        });
-      }
 
       await auditLog(request, "MONTHLY_REPORT_SUBMITTED", "monthly_report", report.id, null, { month, year, status: "SUBMITTED" });
 
@@ -428,19 +415,6 @@ export async function monthlyReportRoutes(app: FastifyInstance) {
           lockedAt: new Date(),
         },
       });
-
-      // Notify employee
-      const reviewer = await prisma.user.findUnique({ where: { id: request.currentUserId! } });
-      if (report.employee && reviewer) {
-        email.notifyEmployee({
-          orgId: request.currentOrgId!,
-          employeeEmail: report.employee.email,
-          employeeName: `${report.employee.firstName} ${report.employee.lastName}`,
-          eventType: "MONTHLY_REPORT",
-          status: "APPROVED",
-          reviewerName: reviewer.displayName,
-        }).catch(() => {});
-      }
 
       await auditLog(request, "MONTHLY_REPORT_APPROVED", "monthly_report", id, { status: "SUBMITTED" }, { status: "APPROVED" });
 
@@ -592,6 +566,14 @@ export async function monthlyReportRoutes(app: FastifyInstance) {
         return reply.status(403).send({ ok: false, error: { code: "FORBIDDEN", message: "You cannot submit reports for this employee" } });
       }
 
+      // Block proxy submission for employees who must submit themselves
+      if (employee.requireSelfSubmit) {
+        return reply.status(403).send({
+          ok: false,
+          error: { code: "SELF_SUBMIT_REQUIRED", message: "This employee must submit their own report" },
+        });
+      }
+
       // Resolve the manager — the person the report is sent to for review.
       // When the admin/manager creates the report, the report's manager is the employee's assigned manager.
       // If the current user IS the employee's manager, the report effectively self-submits.
@@ -644,20 +626,6 @@ export async function monthlyReportRoutes(app: FastifyInstance) {
         },
       });
 
-      // Notify manager (unless submitter is the manager themselves)
-      if (resolvedManager && resolvedManager.id !== request.currentUserId) {
-        email.notifyMonthlyReportSubmitted({
-          orgId: request.currentOrgId!,
-          managerEmail: resolvedManager.email,
-          managerName: resolvedManager.displayName,
-          employeeName: `${employee.firstName} ${employee.lastName}`,
-          month,
-          year,
-        }).catch((err: any) => {
-          console.error("[monthly-reports] Failed to send submission email:", err?.message ?? err);
-        });
-      }
-
       await auditLog(
         request,
         "MONTHLY_REPORT_SUBMITTED",
@@ -668,6 +636,50 @@ export async function monthlyReportRoutes(app: FastifyInstance) {
       );
 
       return { ok: true, data: report };
+    }
+  );
+
+  /**
+   * POST /monthly-reports/notify-submit — Notify employee that their attendance is ready for self-submission
+   * Body: { employeeId, month, year }
+   */
+  app.post(
+    "/notify-submit",
+    { preHandler: [requirePermission("reports.review")] },
+    async (request, reply) => {
+      const parsed = NotifySubmitRequestSchema.safeParse(request.body);
+      if (!parsed.success) {
+        return reply.status(400).send({ ok: false, error: { code: "VALIDATION", message: parsed.error.message } });
+      }
+
+      const { employeeId, month, year } = parsed.data;
+
+      const { allowed, employee } = await canManageEmployee(request, employeeId);
+      if (!allowed || !employee) {
+        return reply.status(403).send({ ok: false, error: { code: "FORBIDDEN", message: "You cannot manage this employee" } });
+      }
+
+      const currentUser = await prisma.user.findUnique({ where: { id: request.currentUserId! } });
+
+      await email.notifySubmitRequired({
+        orgId: request.currentOrgId!,
+        employeeEmail: employee.email,
+        employeeName: `${employee.firstName} ${employee.lastName}`,
+        month,
+        year,
+        managerName: currentUser?.displayName ?? "Your manager",
+      });
+
+      await auditLog(
+        request,
+        "MONTHLY_REPORT_NOTIFY_SUBMIT",
+        "employee",
+        employeeId,
+        null,
+        { month, year, notifiedEmployee: employee.email }
+      );
+
+      return { ok: true };
     }
   );
 }

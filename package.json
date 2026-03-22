@@ -16,6 +16,7 @@
     "db:seed": "npm run seed -w packages/db",
     "lint": "eslint . --ext .ts,.tsx",
     "test": "vitest run",
+    "test:digest": "npx tsx --env-file=.env apps/worker/src/test-digest.ts",
     "docker:up": "docker compose -f infra/docker/docker-compose.yml up -d",
     "docker:down": "docker compose -f infra/docker/docker-compose.yml down"
   },

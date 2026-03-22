@@ -1,7 +1,7 @@
 import { useState } from "react";
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import { api } from "../../../../api/client";
-import { Plus, Calendar } from "lucide-react";
+import { Plus, Calendar, ExternalLink } from "lucide-react";
 import dayjs from "dayjs";
 
 export function HolidaysPage() {
@@ -27,9 +27,20 @@ export function HolidaysPage() {
     <div className="mx-auto max-w-2xl">
       <div className="mb-4 flex items-center justify-between">
         <h3 className="text-lg font-semibold">Holidays</h3>
-        <button onClick={() => setShowAdd(!showAdd)} className="flex items-center gap-2 rounded-lg bg-primary-600 px-4 py-2 text-sm font-medium text-white hover:bg-primary-700">
-          <Plus size={16} /> Add Holiday
-        </button>
+        <div className="flex items-center gap-3">
+          <a
+            href="https://www.kolzchut.org.il/he/%D7%97%D7%92%D7%99%D7%9D_%D7%99%D7%94%D7%95%D7%93%D7%99%D7%99%D7%9D"
+            target="_blank"
+            rel="noopener noreferrer"
+            className="flex items-center gap-1.5 rounded-lg border border-gray-300 px-3 py-2 text-sm font-medium text-gray-700 hover:bg-gray-50"
+          >
+            <ExternalLink size={14} />
+            Review Annual Israeli Holidays
+          </a>
+          <button onClick={() => setShowAdd(!showAdd)} className="flex items-center gap-2 rounded-lg bg-primary-600 px-4 py-2 text-sm font-medium text-white hover:bg-primary-700">
+            <Plus size={16} /> Add Holiday
+          </button>
+        </div>
       </div>
 
       {showAdd && (

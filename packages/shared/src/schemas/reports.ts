@@ -64,6 +64,13 @@ export const MonthlyReportQuerySchema = z.object({
   limit: z.coerce.number().int().min(1).max(100).default(20),
 });
 
+export const NotifySubmitRequestSchema = z.object({
+  employeeId: z.string().uuid(),
+  month: z.number().int().min(1).max(12),
+  year: z.number().int().min(2020),
+});
+
 export type MonthlyReportSubmit = z.infer<typeof MonthlyReportSubmitSchema>;
 export type MonthlyReportReject = z.infer<typeof MonthlyReportRejectSchema>;
 export type MonthlyReportQuery = z.infer<typeof MonthlyReportQuerySchema>;
+export type NotifySubmitRequest = z.infer<typeof NotifySubmitRequestSchema>;

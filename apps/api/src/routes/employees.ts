@@ -120,6 +120,8 @@ export async function employeeRoutes(app: FastifyInstance) {
             managerId: data.managerId,
             siteId: data.siteId,
             startDate: new Date(data.startDate),
+            employmentPercentage: data.employmentPercentage ?? 100,
+            daysOff: data.daysOff ?? [],
           },
         });
 

@@ -12,7 +12,7 @@ datasource db {
 model Org {
   id             String   @id @default(uuid()) @db.Uuid
   name           String   @db.VarChar(255)
-  monthStartDay  Int      @default(1) @map("month_start_day")
+  monthStartDay  Int      @default(26) @map("month_start_day")
   timezone       String   @default("Asia/Jerusalem") @db.VarChar(50)
   autoLogoutTime String?  @map("auto_logout_time") @db.VarChar(5) // HH:mm
   autoLogoutEnabled Boolean @default(false) @map("auto_logout_enabled")
@@ -163,6 +163,9 @@ model Employee {
   startDate      DateTime  @map("start_date") @db.Date
   endDate        DateTime? @map("end_date") @db.Date
   isActive       Boolean   @default(true) @map("is_active")
+  employmentPercentage Int @default(100) @map("employment_percentage")
+  daysOff        String[]  @default([]) @map("days_off")
+  requireSelfSubmit Boolean @default(true) @map("require_self_submit")
   createdAt      DateTime  @default(now()) @map("created_at")
   updatedAt      DateTime  @updatedAt @map("updated_at")
 

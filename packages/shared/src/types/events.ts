@@ -8,6 +8,11 @@ export const DAY_STATUSES = [
   "RESERVES",
   "HALF_DAY",
   "WORK_FROM_HOME",
+  "PUBLIC_HOLIDAY",
+  "HOLIDAY_EVE",
+  "CHOICE_DAY",
+  "ADVANCED_STUDY",
+  "DAY_OFF",
 ] as const;
 
 export type DayStatus = (typeof DAY_STATUSES)[number];
@@ -59,6 +64,7 @@ export const AUDIT_ACTIONS = [
   "MONTHLY_REPORT_SUBMITTED",
   "MONTHLY_REPORT_APPROVED",
   "MONTHLY_REPORT_REJECTED",
+  "MONTHLY_REPORT_NOTIFY_SUBMIT",
   "DAILY_ATTENDANCE_PROCESSED",
 ] as const;
 

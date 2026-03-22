@@ -14,6 +14,8 @@ import { PoliciesPage } from "./routes/admin/policies/PoliciesPage";
 import { HolidaysPage } from "./routes/admin/holidays/HolidaysPage";
 import { DepartmentsPage } from "./routes/admin/departments/DepartmentsPage";
 import { AuditLogPage } from "./routes/admin/audit/AuditLogPage";
+import { AdminCalendarDigestPage } from "./routes/admin/calendar-digest/AdminCalendarDigestPage";
+import { SharePage } from "./routes/admin/share/SharePage";
 import { CalendarDigestPage } from "./routes/digest/CalendarDigestPage";
 
 export function App() {
@@ -60,6 +62,8 @@ export function App() {
         <Route path="/admin/holidays" element={<HolidaysPage />} />
         <Route path="/admin/departments" element={<DepartmentsPage />} />
         <Route path="/admin/audit" element={<AuditLogPage />} />
+        <Route path="/admin/calendar-digest" element={<AdminCalendarDigestPage />} />
+        <Route path="/admin/share" element={<SharePage />} />
       </Route>
       {/* Public token-authenticated route — works whether logged in or not */}
       <Route path="/digest/:token" element={<CalendarDigestPage />} />

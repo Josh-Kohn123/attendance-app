@@ -58,9 +58,11 @@ const STATUS_OPTIONS = [
   { value: "CHILD_SICK", label: "Child Sick" },
   { value: "VACATION", label: "Vacation" },
   { value: "RESERVES", label: "Reserves (Miluim)" },
-  { value: "HALF_DAY", label: "Half Day" },
+  { value: "HALF_DAY", label: "Half Day Off" },
   { value: "PRESENT", label: "Present" },
   { value: "WORK_FROM_HOME", label: "Work From Home" },
+  { value: "PUBLIC_HOLIDAY", label: "Public Holiday - Paid" },
+  { value: "DAY_OFF", label: "Day Off" },
 ];
 
 // ─── Match type badge ─────────────────────────────────────────────────

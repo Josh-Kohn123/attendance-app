@@ -2,6 +2,7 @@ import { useState, useMemo } from "react";
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import { useParams, useSearchParams, useNavigate } from "react-router-dom";
 import { api } from "../../../../api/client";
+import { getReportingPeriod } from "@orbs/shared";
 import {
   ChevronLeft,
   ChevronRight,
@@ -14,13 +15,14 @@ import {
   Clock,
   CheckCircle,
   ArrowLeft,
+  Mail,
 } from "lucide-react";
 import clsx from "clsx";
 import dayjs from "dayjs";
 
 // ─── Types & Constants ──────────────────────────────────────────────────────
 
-type DayStatus = "PRESENT" | "SICK" | "CHILD_SICK" | "VACATION" | "RESERVES" | "HALF_DAY" | "WORK_FROM_HOME";
+type DayStatus = "PRESENT" | "SICK" | "CHILD_SICK" | "VACATION" | "RESERVES" | "HALF_DAY" | "WORK_FROM_HOME" | "PUBLIC_HOLIDAY" | "HOLIDAY_EVE" | "CHOICE_DAY" | "ADVANCED_STUDY" | "DAY_OFF";
 type ReportStatus = "DRAFT" | "SUBMITTED" | "APPROVED" | "REJECTED";
 
 const STATUS_CONFIG: Record<
@@ -32,11 +34,19 @@ const STATUS_CONFIG: Record<
   CHILD_SICK:     { label: "Child Sick",     bg: "bg-rose-100",   text: "text-rose-800",   dot: "bg-rose-500",   border: "border-rose-300"   },
   VACATION:       { label: "Vacation",       bg: "bg-sky-100",    text: "text-sky-800",    dot: "bg-sky-500",    border: "border-sky-300"    },
   RESERVES:       { label: "Reserves",       bg: "bg-purple-100", text: "text-purple-800", dot: "bg-purple-500", border: "border-purple-300" },
-  HALF_DAY:       { label: "Half-Day",       bg: "bg-orange-100", text: "text-orange-800", dot: "bg-orange-500", border: "border-orange-300" },
+  HALF_DAY:       { label: "Half Day Off",   bg: "bg-orange-100", text: "text-orange-800", dot: "bg-orange-500", border: "border-orange-300" },
   WORK_FROM_HOME: { label: "WFH",           bg: "bg-teal-100",   text: "text-teal-800",   dot: "bg-teal-500",   border: "border-teal-300"   },
+  PUBLIC_HOLIDAY: { label: "Holiday - Paid", bg: "bg-indigo-100", text: "text-indigo-800", dot: "bg-indigo-500", border: "border-indigo-300" },
+  HOLIDAY_EVE:    { label: "Holiday Eve",    bg: "bg-indigo-50",  text: "text-indigo-700", dot: "bg-indigo-400", border: "border-indigo-200" },
+  CHOICE_DAY:     { label: "Choice Day",     bg: "bg-cyan-100",   text: "text-cyan-800",   dot: "bg-cyan-500",   border: "border-cyan-300"   },
+  ADVANCED_STUDY: { label: "Study",          bg: "bg-lime-100",   text: "text-lime-800",   dot: "bg-lime-500",   border: "border-lime-300"   },
+  DAY_OFF:        { label: "Day Off",        bg: "bg-gray-100",   text: "text-gray-600",   dot: "bg-gray-400",   border: "border-gray-300"   },
 };
 
 const DEFAULT_SITE_ID = "00000000-0000-0000-0000-000000000010";
+
+// Statuses the user can manually pick (excludes auto-filled ones)
+const PICKABLE_STATUSES: DayStatus[] = ["PRESENT", "SICK", "CHILD_SICK", "VACATION", "RESERVES", "HALF_DAY", "WORK_FROM_HOME", "CHOICE_DAY", "ADVANCED_STUDY"];
 
 // ─── Status Picker Popup ─────────────────────────────────────────────────────
 
@@ -60,8 +70,9 @@ function StatusPicker({
         </button>
       </div>
       <div className="p-1">
-        {(Object.entries(STATUS_CONFIG) as [DayStatus, (typeof STATUS_CONFIG)[DayStatus]][]).map(
-          ([key, cfg]) => (
+        {PICKABLE_STATUSES.map((key) => {
+          const cfg = STATUS_CONFIG[key];
+          return (
             <button
               key={key}
               onClick={() => onSelect(key)}
@@ -73,8 +84,8 @@ function StatusPicker({
               <span className={clsx("h-2.5 w-2.5 rounded-full flex-shrink-0", cfg.dot)} />
               {cfg.label}
             </button>
-          )
-        )}
+          );
+        })}
         {current && (
           <>
             <div className="my-1 border-t border-gray-100" />
@@ -124,8 +135,9 @@ function BulkPanel({
       </div>
       <p className="mb-2 text-xs text-blue-700">Apply status to all selected days:</p>
       <div className="flex flex-wrap gap-2">
-        {(Object.entries(STATUS_CONFIG) as [DayStatus, (typeof STATUS_CONFIG)[DayStatus]][]).map(
-          ([key, cfg]) => (
+        {PICKABLE_STATUSES.map((key) => {
+          const cfg = STATUS_CONFIG[key];
+          return (
             <button
               key={key}
               disabled={count === 0 || isPending}
@@ -141,8 +153,8 @@ function BulkPanel({
               <span className={clsx("h-2 w-2 rounded-full", cfg.dot)} />
               {cfg.label}
             </button>
-          )
-        )}
+          );
+        })}
       </div>
     </div>
   );
@@ -155,15 +167,43 @@ function ReportBanner({
   onSubmit,
   isSubmitting,
   employeeName,
+  requireSelfSubmit,
+  onNotify,
+  isNotifying,
+  notifySent,
 }: {
   reportStatus: { status: ReportStatus; reviewerName?: string | null; reviewComment?: string | null };
   onSubmit: () => void;
   isSubmitting: boolean;
   employeeName: string;
+  requireSelfSubmit: boolean;
+  onNotify: () => void;
+  isNotifying: boolean;
+  notifySent: boolean;
 }) {
   const st = reportStatus.status;
 
   if (st === "DRAFT") {
+    if (requireSelfSubmit) {
+      return (
+        <div className="mb-4 flex items-center justify-between rounded-xl border border-amber-200 bg-amber-50 p-4">
+          <div className="flex items-center gap-2">
+            <AlertCircle size={16} className="text-amber-500" />
+            <span className="text-sm text-amber-800">
+              This employee must submit their own report.
+            </span>
+          </div>
+          <button
+            onClick={onNotify}
+            disabled={isNotifying || notifySent}
+            className="flex items-center gap-1.5 rounded-lg bg-blue-600 px-4 py-2 text-sm font-medium text-white hover:bg-blue-700 disabled:opacity-50"
+          >
+            <Mail size={14} />
+            {notifySent ? "Email Sent" : isNotifying ? "Sending..." : "Notify Employee"}
+          </button>
+        </div>
+      );
+    }
     return (
       <div className="mb-4 flex items-center justify-between rounded-xl border border-gray-200 bg-gray-50 p-4">
         <div className="flex items-center gap-2">
@@ -212,6 +252,35 @@ function ReportBanner({
   }
 
   if (st === "REJECTED") {
+    if (requireSelfSubmit) {
+      return (
+        <div className="mb-4 rounded-xl border border-red-200 bg-red-50 p-4">
+          <div className="flex items-start gap-3">
+            <AlertCircle size={18} className="mt-0.5 flex-shrink-0 text-red-500" />
+            <div className="flex-1">
+              <p className="text-sm font-medium text-red-800">Corrections needed for {employeeName}</p>
+              {reportStatus.reviewComment && (
+                <div className="mt-2 rounded-lg border border-red-200 bg-white p-3">
+                  <p className="text-xs text-gray-500">
+                    {reportStatus.reviewerName ? `${reportStatus.reviewerName}: ` : "Manager: "}
+                  </p>
+                  <p className="mt-0.5 text-sm text-red-700">"{reportStatus.reviewComment}"</p>
+                </div>
+              )}
+              <p className="mt-2 text-xs text-amber-700">This employee must resubmit their own report after corrections.</p>
+            </div>
+            <button
+              onClick={onNotify}
+              disabled={isNotifying || notifySent}
+              className="flex-shrink-0 flex items-center gap-1.5 rounded-lg bg-blue-600 px-4 py-2 text-sm font-medium text-white hover:bg-blue-700 disabled:opacity-50"
+            >
+              <Mail size={14} />
+              {notifySent ? "Email Sent" : isNotifying ? "Sending..." : "Notify Employee"}
+            </button>
+          </div>
+        </div>
+      );
+    }
     return (
       <div className="mb-4 rounded-xl border border-red-200 bg-red-50 p-4">
         <div className="flex items-start gap-3">
@@ -295,18 +364,23 @@ export function CreateReportPage() {
   const initialMonth = Number(searchParams.get("month")) || dayjs().month() + 1;
   const initialYear = Number(searchParams.get("year")) || dayjs().year();
 
-  const [currentMonth, setCurrentMonth] = useState(
-    dayjs().year(initialYear).month(initialMonth - 1).startOf("month")
-  );
+  const [monthNum, setMonthNum] = useState(initialMonth);
+  const [yearNum, setYearNum] = useState(initialYear);
   const [multiSelectMode, setMultiSelectMode] = useState(false);
   const [selectedDates, setSelectedDates] = useState<Set<string>>(new Set());
   const [openPickerDate, setOpenPickerDate] = useState<string | null>(null);
   const [showConfirm, setShowConfirm] = useState(false);
 
-  const monthNum = currentMonth.month() + 1;
-  const yearNum = currentMonth.year();
-  const from = currentMonth.format("YYYY-MM-DD");
-  const to = currentMonth.endOf("month").format("YYYY-MM-DD");
+  // Fetch org policies to get monthStartDay
+  const { data: orgConfig } = useQuery<{ monthStartDay: number }>({
+    queryKey: ["org-config"],
+    queryFn: () => api.get("/admin/policies/public"),
+  });
+  const monthStartDay = orgConfig?.monthStartDay ?? 26;
+
+  // Compute reporting period
+  const { from, to } = getReportingPeriod(monthNum, yearNum, monthStartDay);
+  const currentMonth = dayjs().year(yearNum).month(monthNum - 1);
 
   // ── Fetch employee info from team status ──
   const { data: teamStatus } = useQuery({
@@ -324,6 +398,19 @@ export function CreateReportPage() {
       api.get<{ items: Array<{ serverTimestamp: string; notes: string | null }> }>(
         `/attendance/employee/${employeeId}?from=${from}&to=${to}&limit=100`
       ),
+    enabled: !!employeeId,
+  });
+
+  // ── Fetch holidays for the period ──
+  const { data: holidays } = useQuery<{ date: string; name: string }[]>({
+    queryKey: ["holidays-dates", from, to],
+    queryFn: () => api.get(`/admin/holidays/dates?from=${from}&to=${to}`),
+  });
+
+  // ── Fetch employee details for daysOff ──
+  const { data: employeeDetails } = useQuery<{ daysOff?: string[] }>({
+    queryKey: ["employee-details", employeeId],
+    queryFn: () => api.get(`/employees/${employeeId}`),
     enabled: !!employeeId,
   });
 
@@ -347,19 +434,55 @@ export function CreateReportPage() {
   const effectiveStatus: ReportStatus = reportStatus?.status ?? "DRAFT";
   const isEditable = ["DRAFT", "REJECTED"].includes(effectiveStatus);
 
+  // Build set of holiday dates and employee days off dates
+  const holidayDates = useMemo(() => new Set((holidays ?? []).map((h) => h.date)), [holidays]);
+
+  const WEEKDAY_MAP: Record<string, number> = { SUNDAY: 0, MONDAY: 1, TUESDAY: 2, WEDNESDAY: 3, THURSDAY: 4 };
+  const daysOffSet = useMemo(() => {
+    const empDaysOff = employeeDetails?.daysOff ?? [];
+    return new Set(empDaysOff.map((d) => WEEKDAY_MAP[d]).filter((n) => n !== undefined));
+  }, [employeeDetails]);
+
+  // Set of auto-filled dates (non-editable)
+  const autoFilledDates = useMemo(() => {
+    const set = new Set<string>();
+    // Add holiday dates
+    for (const d of holidayDates) set.add(d);
+    // Add employee days off for all workdays in the period
+    let cursor = dayjs(from);
+    const end = dayjs(to);
+    while (!cursor.isAfter(end)) {
+      if (daysOffSet.has(cursor.day())) set.add(cursor.format("YYYY-MM-DD"));
+      cursor = cursor.add(1, "day");
+    }
+    return set;
+  }, [holidayDates, daysOffSet, from, to]);
+
   // ── Map date → status ──
   const statusByDate = useMemo(() => {
     const map = new Map<string, DayStatus>();
+    // First, auto-fill holidays and days off
+    for (const d of holidayDates) map.set(d, "PUBLIC_HOLIDAY");
+    let cursor = dayjs(from);
+    const end = dayjs(to);
+    while (!cursor.isAfter(end)) {
+      const dateStr = cursor.format("YYYY-MM-DD");
+      if (daysOffSet.has(cursor.day()) && !holidayDates.has(dateStr)) {
+        map.set(dateStr, "DAY_OFF");
+      }
+      cursor = cursor.add(1, "day");
+    }
+    // Then overlay attendance data (attendance takes precedence for non-auto-filled)
     if (attendance?.items) {
       for (const event of attendance.items) {
         const dateStr = dayjs(event.serverTimestamp).format("YYYY-MM-DD");
-        if (event.notes && (event.notes as string) in STATUS_CONFIG) {
+        if (!autoFilledDates.has(dateStr) && event.notes && (event.notes as string) in STATUS_CONFIG) {
           map.set(dateStr, event.notes as DayStatus);
         }
       }
     }
     return map;
-  }, [attendance]);
+  }, [attendance, holidayDates, daysOffSet, autoFilledDates, from, to]);
 
   // ── Single-day mutation (proxy) ──
   const setEntry = useMutation({
@@ -403,6 +526,22 @@ export function CreateReportPage() {
   });
 
   const [submitError, setSubmitError] = useState<string | null>(null);
+  const [notifySent, setNotifySent] = useState(false);
+
+  const requireSelfSubmit = employeeInfo?.requireSelfSubmit ?? true;
+
+  // ── Notify employee to self-submit ──
+  const notifyEmployee = useMutation({
+    mutationFn: () =>
+      api.post("/monthly-reports/notify-submit", {
+        employeeId,
+        month: monthNum,
+        year: yearNum,
+      }),
+    onSuccess: () => {
+      setNotifySent(true);
+    },
+  });
 
   // ── Submit report on behalf of employee ──
   const submitReport = useMutation({
@@ -424,22 +563,27 @@ export function CreateReportPage() {
     },
   });
 
-  // ── Calendar grid ──
-  const daysInMonth = currentMonth.daysInMonth();
-  const startDay = currentMonth.day();
+  // ── Calendar grid (reporting period days) ──
   const days = useMemo(() => {
     const arr: (dayjs.Dayjs | null)[] = [];
-    for (let i = 0; i < startDay; i++) arr.push(null);
-    for (let d = 1; d <= daysInMonth; d++) arr.push(currentMonth.date(d));
+    const start = dayjs(from);
+    const end = dayjs(to);
+    // Pad start to align with day-of-week column
+    for (let i = 0; i < start.day(); i++) arr.push(null);
+    let cursor = start;
+    while (!cursor.isAfter(end)) {
+      arr.push(cursor);
+      cursor = cursor.add(1, "day");
+    }
     return arr;
-  }, [currentMonth, daysInMonth, startDay]);
+  }, [from, to]);
 
   const isToday = (d: dayjs.Dayjs) => d.isSame(dayjs(), "day");
   const isFuture = (d: dayjs.Dayjs) => d.isAfter(dayjs(), "day");
   const isWeekend = (d: dayjs.Dayjs) => d.day() === 5 || d.day() === 6;
 
   function handleDayClick(dateStr: string) {
-    if (!isEditable) return;
+    if (!isEditable || autoFilledDates.has(dateStr)) return;
     if (multiSelectMode) {
       setSelectedDates((prev) => {
         const next = new Set(prev);
@@ -490,6 +634,10 @@ export function CreateReportPage() {
           onSubmit={() => { setSubmitError(null); setShowConfirm(true); }}
           isSubmitting={submitReport.isPending}
           employeeName={employeeName}
+          requireSelfSubmit={requireSelfSubmit}
+          onNotify={() => notifyEmployee.mutate()}
+          isNotifying={notifyEmployee.isPending}
+          notifySent={notifySent}
         />
 
         {/* Submit error */}
@@ -510,16 +658,27 @@ export function CreateReportPage() {
         <div className="mb-4 flex items-center justify-between">
           <div className="flex items-center gap-2">
             <button
-              onClick={() => setCurrentMonth((m) => m.subtract(1, "month"))}
+              onClick={() => {
+                setNotifySent(false);
+                if (monthNum === 1) { setMonthNum(12); setYearNum(yearNum - 1); }
+                else setMonthNum(monthNum - 1);
+              }}
               className="rounded-lg p-2 hover:bg-gray-100"
             >
               <ChevronLeft size={20} />
             </button>
-            <h3 className="w-40 text-center text-lg font-semibold">
-              {currentMonth.format("MMMM YYYY")}
-            </h3>
+            <div className="w-48 text-center">
+              <h3 className="text-lg font-semibold">{currentMonth.format("MMMM YYYY")}</h3>
+              {monthStartDay !== 1 && (
+                <p className="text-xs text-gray-400">{from} - {to}</p>
+              )}
+            </div>
             <button
-              onClick={() => setCurrentMonth((m) => m.add(1, "month"))}
+              onClick={() => {
+                setNotifySent(false);
+                if (monthNum === 12) { setMonthNum(1); setYearNum(yearNum + 1); }
+                else setMonthNum(monthNum + 1);
+              }}
               className="rounded-lg p-2 hover:bg-gray-100"
             >
               <ChevronRight size={20} />
@@ -586,7 +745,8 @@ export function CreateReportPage() {
             const selected = selectedDates.has(dateStr);
             const isPickerOpen = openPickerDate === dateStr;
 
-            const clickable = isEditable && !future;
+            const isAutoFilled = autoFilledDates.has(dateStr);
+            const clickable = isEditable && !future && !isAutoFilled;
 
             return (
               <div key={dateStr} className="relative">
