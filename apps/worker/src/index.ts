@@ -5,8 +5,7 @@
  *   - Auto-logout events
  *   - Daily attendance processing
  *
- * In a more advanced setup, this would use BullMQ queues.
- * For now, it runs on a simple interval.
+ * Runs on a simple interval-based scheduler.
  */
 
 import { prisma } from "@orbs/db";

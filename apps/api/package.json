@@ -23,8 +23,6 @@
     "@fastify/swagger-ui": "^3.0.0",
     "googleapis": "^140.0.0",
     "zod": "^3.23.0",
-    "bullmq": "^5.8.0",
-    "ioredis": "^5.4.0",
     "exceljs": "^4.4.0",
     "pdfkit": "^0.15.0",
     "dayjs": "^1.11.0",
