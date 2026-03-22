@@ -335,7 +335,7 @@ export function EmployeesAdmin() {
 
   const { data: deptData } = useQuery({
     queryKey: ["departments"],
-    queryFn: () => api.get<any>("/departments"),
+    queryFn: () => api.get<any>("/admin/departments"),
   });
   const departments: { id: string; name: string }[] = deptData?.data ?? deptData ?? [];
 
