@@ -1,12 +1,12 @@
 import type { VercelRequest, VercelResponse } from "@vercel/node";
-import { withPublic } from "../../lib/middleware";
+import { withPublic } from "../../lib/middleware.js";
 import { prisma } from "@orbs/db";
 import type { DigestConfirmRequest, DigestEntry, DigestEmployee, CalendarDigestData } from "@orbs/shared";
 import {
   getWorkdaysInRange,
   applyAttendanceIfAbsent,
   applyAttendanceForced,
-} from "../../lib/calendar-digest-helpers";
+} from "../../lib/calendar-digest-helpers.js";
 
 export default withPublic(
   async (req: VercelRequest, res: VercelResponse, _ctx) => {

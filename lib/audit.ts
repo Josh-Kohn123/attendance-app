@@ -1,7 +1,7 @@
 import { prisma } from "@orbs/db";
 import type { VercelRequest } from "@vercel/node";
 import type { AuditAction } from "@orbs/shared";
-import type { AuthContext } from "./auth";
+import type { AuthContext } from "./auth.js";
 
 export async function auditLog(
   req: VercelRequest,

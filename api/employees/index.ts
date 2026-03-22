@@ -1,10 +1,10 @@
 import type { VercelRequest, VercelResponse } from "@vercel/node";
-import { withAuth } from "../../lib/middleware";
+import { withAuth } from "../../lib/middleware.js";
 import { prisma } from "@orbs/db";
-import { auditLog } from "../../lib/audit";
+import { auditLog } from "../../lib/audit.js";
 import { CreateEmployeeSchema } from "@orbs/shared";
 import { hasPermission } from "@orbs/authz";
-import type { AuthContext } from "../../lib/auth";
+import type { AuthContext } from "../../lib/auth.js";
 
 export default withAuth(async (req: VercelRequest, res: VercelResponse, ctx: AuthContext) => {
   // GET /api/employees — list employees (scope-filtered, no specific permission)

@@ -1,8 +1,8 @@
 import type { VercelRequest, VercelResponse } from "@vercel/node";
-import { withAuth } from "../../lib/middleware";
+import { withAuth } from "../../lib/middleware.js";
 import { prisma } from "@orbs/db";
 import { fetchEventsInRange, extractAbsenceStatus } from "../../apps/api/src/services/google-calendar.js";
-import { getWorkdaysInRange } from "../../lib/calendar-digest-helpers";
+import { getWorkdaysInRange } from "../../lib/calendar-digest-helpers.js";
 
 export default withAuth(
   async (req: VercelRequest, res: VercelResponse, ctx) => {

@@ -1,5 +1,5 @@
 import type { VercelRequest, VercelResponse } from "@vercel/node";
-import { withAuth } from "../../lib/middleware";
+import { withAuth } from "../../lib/middleware.js";
 import { prisma } from "@orbs/db";
 import { LeaveRequestSchema } from "@orbs/shared";
 import { email } from "../../apps/api/src/services/email.js";

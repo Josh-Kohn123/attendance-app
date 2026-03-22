@@ -1,7 +1,7 @@
 import type { VercelRequest, VercelResponse } from "@vercel/node";
-import { withAuth } from "../../lib/middleware";
+import { withAuth } from "../../lib/middleware.js";
 import { prisma } from "@orbs/db";
-import { getWorkdaysInRange, applyAttendanceIfAbsent } from "../../lib/calendar-digest-helpers";
+import { getWorkdaysInRange, applyAttendanceIfAbsent } from "../../lib/calendar-digest-helpers.js";
 
 export default withAuth(
   async (req: VercelRequest, res: VercelResponse, ctx) => {

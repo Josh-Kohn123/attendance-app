@@ -1,10 +1,10 @@
 import type { VercelRequest, VercelResponse } from "@vercel/node";
-import { withAuth } from "../../lib/middleware";
+import { withAuth } from "../../lib/middleware.js";
 import { prisma } from "@orbs/db";
-import { auditLog } from "../../lib/audit";
+import { auditLog } from "../../lib/audit.js";
 import { NotifySubmitRequestSchema } from "@orbs/shared";
 import { email } from "../../apps/api/src/services/email.js";
-import type { AuthContext } from "../../lib/auth";
+import type { AuthContext } from "../../lib/auth.js";
 
 async function canManageEmployee(ctx: AuthContext, employeeId: string) {
   const employee = await prisma.employee.findFirst({

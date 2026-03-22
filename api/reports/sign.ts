@@ -1,7 +1,7 @@
 import type { VercelRequest, VercelResponse } from "@vercel/node";
-import { withAuth } from "../../lib/middleware";
+import { withAuth } from "../../lib/middleware.js";
 import { prisma } from "@orbs/db";
-import { auditLog } from "../../lib/audit";
+import { auditLog } from "../../lib/audit.js";
 import { ReportSignSchema } from "@orbs/shared";
 
 export default withAuth(

@@ -1,5 +1,5 @@
 import type { VercelRequest, VercelResponse } from "@vercel/node";
-import { verifyAuth, type AuthContext } from "./auth";
+import { verifyAuth, type AuthContext } from "./auth.js";
 import { hasPermission } from "@orbs/authz";
 import type { Permission } from "@orbs/shared";
 

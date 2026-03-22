@@ -1,8 +1,8 @@
 import type { VercelRequest, VercelResponse } from "@vercel/node";
-import { withAuth } from "../../lib/middleware";
+import { withAuth } from "../../lib/middleware.js";
 import { prisma } from "@orbs/db";
 import { CorrectionSchema } from "@orbs/shared";
-import { auditLog } from "../../lib/audit";
+import { auditLog } from "../../lib/audit.js";
 
 export default withAuth(
   async (req: VercelRequest, res: VercelResponse, ctx) => {
