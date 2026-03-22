@@ -15,7 +15,7 @@ const JWT_SECRET = process.env.JWT_SECRET ?? "dev-secret-change-me";
 
 export function signJwt(payload: { sub: string; orgId: string; email: string; roles: string[] }): string {
   return jwt.sign(payload, JWT_SECRET, {
-    expiresIn: process.env.JWT_EXPIRES_IN ?? "8h",
+    expiresIn: (process.env.JWT_EXPIRES_IN ?? "8h") as any,
   });
 }
 
