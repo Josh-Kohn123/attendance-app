@@ -1,0 +1,4 @@
+apps/api/
+apps/worker/
+docs/
+*.md
