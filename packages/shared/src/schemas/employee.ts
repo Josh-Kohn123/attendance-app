@@ -17,6 +17,7 @@ export const CreateEmployeeSchema = z.object({
   role: z.enum(ROLES).default("employee"),
   employmentPercentage: z.number().int().min(10).max(100).multipleOf(10).default(100),
   daysOff: z.array(z.enum(WEEKDAYS)).default([]),
+  requireSelfSubmit: z.boolean().default(true),
 });
 
 export const UpdateEmployeeSchema = CreateEmployeeSchema.partial().omit({ email: true });
@@ -35,6 +36,7 @@ export const EmployeeResponseSchema = z.object({
   startDate: z.string(),
   endDate: z.string().nullable(),
   isActive: z.boolean(),
+  requireSelfSubmit: z.boolean(),
   createdAt: z.string(),
 });
 

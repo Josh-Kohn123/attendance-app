@@ -347,6 +347,38 @@ export const email = {
     });
   },
 
+  /** Notify employee that their attendance sheet has been filled and needs their review/submission */
+  async notifySubmitRequired(data: {
+    orgId: string;
+    employeeEmail: string;
+    employeeName: string;
+    month: number;
+    year: number;
+    managerName: string;
+  }) {
+    const period = `${new Date(data.year, data.month - 1).toLocaleString("default", { month: "long" })} ${data.year}`;
+    return sendEmail({
+      to: data.employeeEmail,
+      subject: `[Attendance] Your attendance sheet is ready for review`,
+      html: wrapTemplate(
+        "Attendance Sheet Ready for Review",
+        `
+        <p style="color:#374151;line-height:1.6;">
+          Hi ${data.employeeName.split(" ")[0]},
+        </p>
+        <p style="color:#374151;line-height:1.6;">
+          <strong>${data.managerName}</strong> has filled out your attendance for <strong>${period}</strong>. Please review it and submit when you're ready.
+        </p>
+        <p style="margin-top:24px;">
+          <a href="${process.env.CORS_ORIGIN}/calendar?month=${data.month}&year=${data.year}"
+             style="display:inline-block;background-color:#2563eb;color:#ffffff;padding:10px 24px;border-radius:8px;text-decoration:none;font-weight:500;">
+            Review &amp; Submit
+          </a>
+        </p>`
+      ),
+    });
+  },
+
   /** Alert on exceptions (missing clock-in, shortages) */
   async alertException(data: {
     orgId: string;

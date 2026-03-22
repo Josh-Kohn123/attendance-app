@@ -5,6 +5,7 @@ import {
   MonthlyReportSubmitSchema,
   MonthlyReportRejectSchema,
   MonthlyReportQuerySchema,
+  NotifySubmitRequestSchema,
 } from "@orbs/shared";
 import { email } from "../services/email.js";
 import { auditLog } from "../services/audit.js";
@@ -178,6 +179,7 @@ export async function monthlyReportRoutes(app: FastifyInstance) {
           employeeName: `${emp.firstName} ${emp.lastName}`,
           employeeEmail: emp.email,
           departmentName: emp.department?.name ?? null,
+          requireSelfSubmit: emp.requireSelfSubmit,
           isSelf: !!isSelf,
           reportId: report?.id ?? null,
           status: report?.status ?? "DRAFT",
@@ -564,6 +566,14 @@ export async function monthlyReportRoutes(app: FastifyInstance) {
         return reply.status(403).send({ ok: false, error: { code: "FORBIDDEN", message: "You cannot submit reports for this employee" } });
       }
 
+      // Block proxy submission for employees who must submit themselves
+      if (employee.requireSelfSubmit) {
+        return reply.status(403).send({
+          ok: false,
+          error: { code: "SELF_SUBMIT_REQUIRED", message: "This employee must submit their own report" },
+        });
+      }
+
       // Resolve the manager — the person the report is sent to for review.
       // When the admin/manager creates the report, the report's manager is the employee's assigned manager.
       // If the current user IS the employee's manager, the report effectively self-submits.
@@ -626,6 +636,50 @@ export async function monthlyReportRoutes(app: FastifyInstance) {
       );
 
       return { ok: true, data: report };
+    }
+  );
+
+  /**
+   * POST /monthly-reports/notify-submit — Notify employee that their attendance is ready for self-submission
+   * Body: { employeeId, month, year }
+   */
+  app.post(
+    "/notify-submit",
+    { preHandler: [requirePermission("reports.review")] },
+    async (request, reply) => {
+      const parsed = NotifySubmitRequestSchema.safeParse(request.body);
+      if (!parsed.success) {
+        return reply.status(400).send({ ok: false, error: { code: "VALIDATION", message: parsed.error.message } });
+      }
+
+      const { employeeId, month, year } = parsed.data;
+
+      const { allowed, employee } = await canManageEmployee(request, employeeId);
+      if (!allowed || !employee) {
+        return reply.status(403).send({ ok: false, error: { code: "FORBIDDEN", message: "You cannot manage this employee" } });
+      }
+
+      const currentUser = await prisma.user.findUnique({ where: { id: request.currentUserId! } });
+
+      await email.notifySubmitRequired({
+        orgId: request.currentOrgId!,
+        employeeEmail: employee.email,
+        employeeName: `${employee.firstName} ${employee.lastName}`,
+        month,
+        year,
+        managerName: currentUser?.displayName ?? "Your manager",
+      });
+
+      await auditLog(
+        request,
+        "MONTHLY_REPORT_NOTIFY_SUBMIT",
+        "employee",
+        employeeId,
+        null,
+        { month, year, notifiedEmployee: employee.email }
+      );
+
+      return { ok: true };
     }
   );
 }

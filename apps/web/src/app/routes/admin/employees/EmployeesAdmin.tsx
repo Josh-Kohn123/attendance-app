@@ -23,6 +23,7 @@ const emptyForm = {
   phone: "", position: "", startDate: "", role: "employee" as Role,
   departmentId: "", managerId: "",
   employmentPercentage: 100, daysOff: [] as string[],
+  requireSelfSubmit: true,
 };
 
 type FormState = typeof emptyForm;
@@ -50,6 +51,7 @@ function buildPayload(form: FormState, isNew: boolean) {
 
   payload.employmentPercentage = form.employmentPercentage;
   payload.daysOff = form.daysOff;
+  payload.requireSelfSubmit = form.requireSelfSubmit;
 
   return payload;
 }
@@ -201,6 +203,21 @@ function EmployeeFormFields({
           </div>
         </div>
       )}
+
+      {/* Need to Approve Hours Themselves */}
+      <div>
+        <label className="mb-1 block text-xs font-medium text-gray-600">
+          Need to Approve Hours Themselves
+        </label>
+        <select
+          value={form.requireSelfSubmit ? "yes" : "no"}
+          onChange={(e) => onChange({ requireSelfSubmit: e.target.value === "yes" })}
+          className="w-full rounded-lg border px-3 py-2 text-sm"
+        >
+          <option value="yes">Yes</option>
+          <option value="no">No</option>
+        </select>
+      </div>
     </div>
   );
 }
@@ -377,6 +394,7 @@ export function EmployeesAdmin() {
       managerId: emp.managerId ?? "",
       employmentPercentage: emp.employmentPercentage ?? 100,
       daysOff: emp.daysOff ?? [],
+      requireSelfSubmit: emp.requireSelfSubmit ?? true,
     });
     setEditTarget(emp);
     setFormError(null);

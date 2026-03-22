@@ -15,6 +15,7 @@ import {
   Clock,
   CheckCircle,
   ArrowLeft,
+  Mail,
 } from "lucide-react";
 import clsx from "clsx";
 import dayjs from "dayjs";
@@ -163,15 +164,43 @@ function ReportBanner({
   onSubmit,
   isSubmitting,
   employeeName,
+  requireSelfSubmit,
+  onNotify,
+  isNotifying,
+  notifySent,
 }: {
   reportStatus: { status: ReportStatus; reviewerName?: string | null; reviewComment?: string | null };
   onSubmit: () => void;
   isSubmitting: boolean;
   employeeName: string;
+  requireSelfSubmit: boolean;
+  onNotify: () => void;
+  isNotifying: boolean;
+  notifySent: boolean;
 }) {
   const st = reportStatus.status;
 
   if (st === "DRAFT") {
+    if (requireSelfSubmit) {
+      return (
+        <div className="mb-4 flex items-center justify-between rounded-xl border border-amber-200 bg-amber-50 p-4">
+          <div className="flex items-center gap-2">
+            <AlertCircle size={16} className="text-amber-500" />
+            <span className="text-sm text-amber-800">
+              This employee must submit their own report.
+            </span>
+          </div>
+          <button
+            onClick={onNotify}
+            disabled={isNotifying || notifySent}
+            className="flex items-center gap-1.5 rounded-lg bg-blue-600 px-4 py-2 text-sm font-medium text-white hover:bg-blue-700 disabled:opacity-50"
+          >
+            <Mail size={14} />
+            {notifySent ? "Email Sent" : isNotifying ? "Sending..." : "Notify Employee"}
+          </button>
+        </div>
+      );
+    }
     return (
       <div className="mb-4 flex items-center justify-between rounded-xl border border-gray-200 bg-gray-50 p-4">
         <div className="flex items-center gap-2">
@@ -220,6 +249,35 @@ function ReportBanner({
   }
 
   if (st === "REJECTED") {
+    if (requireSelfSubmit) {
+      return (
+        <div className="mb-4 rounded-xl border border-red-200 bg-red-50 p-4">
+          <div className="flex items-start gap-3">
+            <AlertCircle size={18} className="mt-0.5 flex-shrink-0 text-red-500" />
+            <div className="flex-1">
+              <p className="text-sm font-medium text-red-800">Corrections needed for {employeeName}</p>
+              {reportStatus.reviewComment && (
+                <div className="mt-2 rounded-lg border border-red-200 bg-white p-3">
+                  <p className="text-xs text-gray-500">
+                    {reportStatus.reviewerName ? `${reportStatus.reviewerName}: ` : "Manager: "}
+                  </p>
+                  <p className="mt-0.5 text-sm text-red-700">"{reportStatus.reviewComment}"</p>
+                </div>
+              )}
+              <p className="mt-2 text-xs text-amber-700">This employee must resubmit their own report after corrections.</p>
+            </div>
+            <button
+              onClick={onNotify}
+              disabled={isNotifying || notifySent}
+              className="flex-shrink-0 flex items-center gap-1.5 rounded-lg bg-blue-600 px-4 py-2 text-sm font-medium text-white hover:bg-blue-700 disabled:opacity-50"
+            >
+              <Mail size={14} />
+              {notifySent ? "Email Sent" : isNotifying ? "Sending..." : "Notify Employee"}
+            </button>
+          </div>
+        </div>
+      );
+    }
     return (
       <div className="mb-4 rounded-xl border border-red-200 bg-red-50 p-4">
         <div className="flex items-start gap-3">
@@ -465,6 +523,22 @@ export function CreateReportPage() {
   });
 
   const [submitError, setSubmitError] = useState<string | null>(null);
+  const [notifySent, setNotifySent] = useState(false);
+
+  const requireSelfSubmit = employeeInfo?.requireSelfSubmit ?? true;
+
+  // ── Notify employee to self-submit ──
+  const notifyEmployee = useMutation({
+    mutationFn: () =>
+      api.post("/monthly-reports/notify-submit", {
+        employeeId,
+        month: monthNum,
+        year: yearNum,
+      }),
+    onSuccess: () => {
+      setNotifySent(true);
+    },
+  });
 
   // ── Submit report on behalf of employee ──
   const submitReport = useMutation({
@@ -557,6 +631,10 @@ export function CreateReportPage() {
           onSubmit={() => { setSubmitError(null); setShowConfirm(true); }}
           isSubmitting={submitReport.isPending}
           employeeName={employeeName}
+          requireSelfSubmit={requireSelfSubmit}
+          onNotify={() => notifyEmployee.mutate()}
+          isNotifying={notifyEmployee.isPending}
+          notifySent={notifySent}
         />
 
         {/* Submit error */}
@@ -578,6 +656,7 @@ export function CreateReportPage() {
           <div className="flex items-center gap-2">
             <button
               onClick={() => {
+                setNotifySent(false);
                 if (monthNum === 1) { setMonthNum(12); setYearNum(yearNum - 1); }
                 else setMonthNum(monthNum - 1);
               }}
@@ -593,6 +672,7 @@ export function CreateReportPage() {
             </div>
             <button
               onClick={() => {
+                setNotifySent(false);
                 if (monthNum === 12) { setMonthNum(1); setYearNum(yearNum + 1); }
                 else setMonthNum(monthNum + 1);
               }}
