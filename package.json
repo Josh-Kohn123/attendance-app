@@ -1,6 +1,7 @@
 {
   "name": "orbs-attendance",
   "private": true,
+  "type": "module",
   "workspaces": [
     "packages/*",
     "apps/*"
