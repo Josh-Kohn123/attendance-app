@@ -22,7 +22,7 @@ import dayjs from "dayjs";
 
 // ─── Types & Constants ──────────────────────────────────────────────────────
 
-type DayStatus = "PRESENT" | "SICK" | "CHILD_SICK" | "VACATION" | "RESERVES" | "HALF_DAY" | "WORK_FROM_HOME" | "PUBLIC_HOLIDAY" | "DAY_OFF";
+type DayStatus = "PRESENT" | "SICK" | "CHILD_SICK" | "VACATION" | "RESERVES" | "HALF_DAY" | "WORK_FROM_HOME" | "PUBLIC_HOLIDAY" | "HOLIDAY_EVE" | "CHOICE_DAY" | "ADVANCED_STUDY" | "DAY_OFF";
 type ReportStatus = "DRAFT" | "SUBMITTED" | "APPROVED" | "REJECTED";
 
 const STATUS_CONFIG: Record<
@@ -36,14 +36,17 @@ const STATUS_CONFIG: Record<
   RESERVES:       { label: "Reserves",       bg: "bg-purple-100", text: "text-purple-800", dot: "bg-purple-500", border: "border-purple-300" },
   HALF_DAY:       { label: "Half Day Off",   bg: "bg-orange-100", text: "text-orange-800", dot: "bg-orange-500", border: "border-orange-300" },
   WORK_FROM_HOME: { label: "WFH",           bg: "bg-teal-100",   text: "text-teal-800",   dot: "bg-teal-500",   border: "border-teal-300"   },
-  PUBLIC_HOLIDAY: { label: "Public Holiday", bg: "bg-indigo-100", text: "text-indigo-800", dot: "bg-indigo-500", border: "border-indigo-300" },
+  PUBLIC_HOLIDAY: { label: "Holiday - Paid", bg: "bg-indigo-100", text: "text-indigo-800", dot: "bg-indigo-500", border: "border-indigo-300" },
+  HOLIDAY_EVE:    { label: "Holiday Eve",    bg: "bg-indigo-50",  text: "text-indigo-700", dot: "bg-indigo-400", border: "border-indigo-200" },
+  CHOICE_DAY:     { label: "Choice Day",     bg: "bg-cyan-100",   text: "text-cyan-800",   dot: "bg-cyan-500",   border: "border-cyan-300"   },
+  ADVANCED_STUDY: { label: "Study",          bg: "bg-lime-100",   text: "text-lime-800",   dot: "bg-lime-500",   border: "border-lime-300"   },
   DAY_OFF:        { label: "Day Off",        bg: "bg-gray-100",   text: "text-gray-600",   dot: "bg-gray-400",   border: "border-gray-300"   },
 };
 
 const DEFAULT_SITE_ID = "00000000-0000-0000-0000-000000000010";
 
 // Statuses the user can manually pick (excludes auto-filled ones)
-const PICKABLE_STATUSES: DayStatus[] = ["PRESENT", "SICK", "CHILD_SICK", "VACATION", "RESERVES", "HALF_DAY", "WORK_FROM_HOME"];
+const PICKABLE_STATUSES: DayStatus[] = ["PRESENT", "SICK", "CHILD_SICK", "VACATION", "RESERVES", "HALF_DAY", "WORK_FROM_HOME", "CHOICE_DAY", "ADVANCED_STUDY"];
 
 // ─── Status Picker Popup ─────────────────────────────────────────────────────
 

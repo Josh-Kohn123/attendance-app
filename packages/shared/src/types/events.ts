@@ -9,6 +9,9 @@ export const DAY_STATUSES = [
   "HALF_DAY",
   "WORK_FROM_HOME",
   "PUBLIC_HOLIDAY",
+  "HOLIDAY_EVE",
+  "CHOICE_DAY",
+  "ADVANCED_STUDY",
   "DAY_OFF",
 ] as const;
 
