@@ -39,17 +39,8 @@ export function withAuth(handler: Handler, options: AuthOptions = {}) {
         return res.status(401).json({ ok: false, error: { code: "UNAUTHORIZED", message: "Authentication required" } });
       }
 
-      if (options.permission) {
-        const allowed = hasPermission(ctx.authzContext, options.permission);
-        console.log("[AUTH DEBUG]", JSON.stringify({
-          permission: options.permission,
-          roles: ctx.authzContext.roles,
-          allowed,
-          url: req.url,
-        }));
-        if (!allowed) {
-          return res.status(403).json({ ok: false, error: { code: "FORBIDDEN", message: `Missing permission: ${options.permission}` } });
-        }
+      if (options.permission && !hasPermission(ctx.authzContext, options.permission)) {
+        return res.status(403).json({ ok: false, error: { code: "FORBIDDEN", message: `Missing permission: ${options.permission}` } });
       }
 
       const result = await handler(req, res, ctx);
