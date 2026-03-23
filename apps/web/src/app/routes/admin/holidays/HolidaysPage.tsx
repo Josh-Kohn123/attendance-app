@@ -7,7 +7,7 @@ import dayjs from "dayjs";
 export function HolidaysPage() {
   const queryClient = useQueryClient();
   const [showAdd, setShowAdd] = useState(false);
-  const [form, setForm] = useState({ name: "", date: "", recurring: false });
+  const [form, setForm] = useState({ name: "", date: "", recurring: false, halfDay: false });
 
   const { data: holidays, isLoading } = useQuery({
     queryKey: ["holidays"],
@@ -19,7 +19,7 @@ export function HolidaysPage() {
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ["holidays"] });
       setShowAdd(false);
-      setForm({ name: "", date: "", recurring: false });
+      setForm({ name: "", date: "", recurring: false, halfDay: false });
     },
   });
 
@@ -55,6 +55,19 @@ export function HolidaysPage() {
               <input type="date" value={form.date} onChange={(e) => setForm({ ...form, date: e.target.value })} className="w-full rounded-lg border px-3 py-2 text-sm" />
             </div>
           </div>
+          <div className="mt-3">
+            <label className="mb-1 block text-xs font-medium text-gray-600">Day Type (Paid)</label>
+            <div className="flex items-center gap-4">
+              <label className="flex items-center gap-2 text-sm">
+                <input type="radio" name="halfDay" checked={!form.halfDay} onChange={() => setForm({ ...form, halfDay: false })} />
+                Full day
+              </label>
+              <label className="flex items-center gap-2 text-sm">
+                <input type="radio" name="halfDay" checked={form.halfDay} onChange={() => setForm({ ...form, halfDay: true })} />
+                Half day
+              </label>
+            </div>
+          </div>
           <label className="mt-3 flex items-center gap-2 text-sm">
             <input type="checkbox" checked={form.recurring} onChange={(e) => setForm({ ...form, recurring: e.target.checked })} />
             Recurring annually
@@ -76,10 +89,19 @@ export function HolidaysPage() {
               <div key={h.id} className="flex items-center gap-4 p-4">
                 <Calendar size={20} className="text-primary-500" />
                 <div>
-                  <p className="font-medium">{h.name}</p>
+                  <p className="font-medium">
+                    {h.name}
+                    {h.halfDay && (
+                      <span className="ml-2 inline-block rounded-full bg-orange-100 px-2 py-0.5 text-xs font-medium text-orange-700">
+                        Half Day
+                      </span>
+                    )}
+                  </p>
                   <p className="text-sm text-gray-500">
                     {dayjs(h.date).format("MMMM D, YYYY")}
                     {h.recurring && " (recurring)"}
+                    {!h.halfDay && " · Full day (paid)"}
+                    {h.halfDay && " · Half day (paid)"}
                   </p>
                 </div>
               </div>

@@ -19,14 +19,14 @@ import { getReportingPeriod } from "@orbs/shared";
 
 // ─── Types & Constants ──────────────────────────────────────────────────────
 
-type DayStatus = "PRESENT" | "SICK" | "CHILD_SICK" | "VACATION" | "RESERVES" | "HALF_DAY" | "WORK_FROM_HOME" | "PUBLIC_HOLIDAY" | "HOLIDAY_EVE" | "CHOICE_DAY" | "ADVANCED_STUDY" | "DAY_OFF";
+type DayStatus = "PRESENT" | "SICK" | "CHILD_SICK" | "VACATION" | "RESERVES" | "HALF_DAY" | "WORK_FROM_HOME" | "PUBLIC_HOLIDAY" | "PUBLIC_HOLIDAY_HALF" | "HOLIDAY_EVE" | "CHOICE_DAY" | "ADVANCED_STUDY" | "DAY_OFF";
 type ReportStatus = "DRAFT" | "SUBMITTED" | "APPROVED" | "REJECTED";
 
 // Statuses that the employee can manually pick
 const PICKABLE_STATUSES: DayStatus[] = ["PRESENT", "SICK", "CHILD_SICK", "VACATION", "RESERVES", "HALF_DAY", "WORK_FROM_HOME", "CHOICE_DAY", "ADVANCED_STUDY"];
 
 // Auto-filled statuses that cannot be changed by employees
-const AUTO_STATUSES: DayStatus[] = ["PUBLIC_HOLIDAY", "HOLIDAY_EVE", "DAY_OFF"];
+const AUTO_STATUSES: DayStatus[] = ["PUBLIC_HOLIDAY", "PUBLIC_HOLIDAY_HALF", "HOLIDAY_EVE", "DAY_OFF"];
 
 const STATUS_CONFIG: Record<
   DayStatus,
@@ -40,6 +40,7 @@ const STATUS_CONFIG: Record<
   HALF_DAY:       { label: "Half Day Off",         bg: "bg-orange-100", text: "text-orange-800", dot: "bg-orange-500", border: "border-orange-300" },
   WORK_FROM_HOME: { label: "WFH",                 bg: "bg-teal-100",   text: "text-teal-800",   dot: "bg-teal-500",   border: "border-teal-300"   },
   PUBLIC_HOLIDAY: { label: "Holiday - Paid",       bg: "bg-indigo-100", text: "text-indigo-800", dot: "bg-indigo-500", border: "border-indigo-300" },
+  PUBLIC_HOLIDAY_HALF: { label: "Holiday (Half)",   bg: "bg-indigo-50",  text: "text-indigo-700", dot: "bg-indigo-400", border: "border-indigo-200" },
   HOLIDAY_EVE:    { label: "Holiday Eve",          bg: "bg-indigo-50",  text: "text-indigo-700", dot: "bg-indigo-400", border: "border-indigo-200" },
   CHOICE_DAY:     { label: "Choice Day",           bg: "bg-cyan-100",   text: "text-cyan-800",   dot: "bg-cyan-500",   border: "border-cyan-300"   },
   ADVANCED_STUDY: { label: "Study",                bg: "bg-lime-100",   text: "text-lime-800",   dot: "bg-lime-500",   border: "border-lime-300"   },
@@ -170,11 +171,15 @@ function ReportBanner({
   onSubmit,
   isSubmitting,
   periodLabel,
+  isPeriodEnded,
+  periodEndDate,
 }: {
   reportStatus: { status: ReportStatus; reviewerName?: string | null; reviewComment?: string | null };
   onSubmit: () => void;
   isSubmitting: boolean;
   periodLabel: string;
+  isPeriodEnded: boolean;
+  periodEndDate: string;
 }) {
   const st = reportStatus.status;
 
@@ -184,12 +189,14 @@ function ReportBanner({
         <div className="flex items-center gap-2">
           <Send size={16} className="text-gray-400" />
           <span className="text-sm text-gray-600">
-            Report not yet submitted. Fill in your attendance and submit when ready.
+            {isPeriodEnded
+              ? "Report not yet submitted. Fill in your attendance and submit when ready."
+              : `Submission opens after the reporting period ends (${dayjs(periodEndDate).format("MMM D, YYYY")}).`}
           </span>
         </div>
         <button
           onClick={onSubmit}
-          disabled={isSubmitting}
+          disabled={isSubmitting || !isPeriodEnded}
           className="flex items-center gap-1.5 rounded-lg bg-blue-600 px-4 py-2 text-sm font-medium text-white hover:bg-blue-700 disabled:opacity-50"
         >
           <Send size={14} />
@@ -326,10 +333,10 @@ export function CalendarPage() {
     enabled: !!from && !!to,
   });
   const holidayDates = useMemo(() => {
-    const set = new Map<string, string>();
+    const set = new Map<string, { name: string; halfDay: boolean }>();
     const items = (holidays as any)?.data ?? holidays ?? [];
     for (const h of items) {
-      set.set(h.date, h.name);
+      set.set(h.date, { name: h.name, halfDay: !!h.halfDay });
     }
     return set;
   }, [holidays]);
@@ -364,13 +371,19 @@ export function CalendarPage() {
   const effectiveStatus: ReportStatus = reportStatus?.status ?? "DRAFT";
   const isEditable = ["DRAFT", "REJECTED"].includes(effectiveStatus);
 
+  // Submission is only allowed after the reporting period has ended
+  const isPeriodEnded = useMemo(() => {
+    if (!to) return false;
+    return dayjs().isAfter(dayjs(to), "day");
+  }, [to]);
+
   // ── Map date → status (merge attendance + auto-filled holidays/daysOff) ──
   const statusByDate = useMemo(() => {
     const map = new Map<string, DayStatus>();
 
-    // First, fill in holidays
-    for (const [dateStr] of holidayDates) {
-      map.set(dateStr, "PUBLIC_HOLIDAY");
+    // First, fill in holidays (full or half day)
+    for (const [dateStr, info] of holidayDates) {
+      map.set(dateStr, info.halfDay ? "PUBLIC_HOLIDAY_HALF" : "PUBLIC_HOLIDAY");
     }
 
     // Then, fill in employee days off
@@ -480,6 +493,10 @@ export function CalendarPage() {
 
   // ── Submit with validation ──
   const handleSubmitClick = () => {
+    if (!isPeriodEnded) {
+      setValidationError(`Submission is not available until the reporting period ends (after ${dayjs(to).format("MMM D, YYYY")}).`);
+      return;
+    }
     if (unfilledWorkdays.size > 0) {
       setValidationError(`Please fill in all workdays in the reporting period before submitting. ${unfilledWorkdays.size} day(s) still need a status.`);
       return;
@@ -561,6 +578,8 @@ export function CalendarPage() {
           onSubmit={handleSubmitClick}
           isSubmitting={submitReport.isPending}
           periodLabel={periodLabel}
+          isPeriodEnded={isPeriodEnded}
+          periodEndDate={to}
         />
 
         {/* Validation error */}
@@ -659,22 +678,25 @@ export function CalendarPage() {
             const isAutoFilled = autoFilledDates.has(dateStr);
 
             const clickable = isEditable && !future && !isAutoFilled;
+            const isUnfilled = unfilledWorkdays.has(dateStr);
 
             return (
               <div key={dateStr} className="relative">
                 <button
                   onClick={() => clickable && handleDayClick(dateStr)}
                   disabled={!clickable}
-                  title={cfg ? cfg.label : isAutoFilled ? "Auto-filled" : undefined}
+                  title={cfg ? cfg.label : isUnfilled ? "Unfilled — needs status" : isAutoFilled ? "Auto-filled" : undefined}
                   className={clsx(
                     "relative flex h-14 w-full flex-col items-center justify-center rounded-xl text-sm transition-colors",
                     weekend && !cfg && !selected && "bg-gray-50 text-gray-500",
                     future && "text-gray-300",
                     today && "ring-2 ring-blue-400",
-                    cfg && !selected && `${cfg.bg} ${cfg.text}`,
+                    isUnfilled && !selected && "bg-red-50 text-red-700 ring-1 ring-red-300",
+                    cfg && !selected && !isUnfilled && `${cfg.bg} ${cfg.text}`,
                     selected && "bg-blue-600 text-white ring-2 ring-blue-600",
-                    clickable && !cfg && !selected && "hover:bg-gray-50",
+                    clickable && !cfg && !selected && !isUnfilled && "hover:bg-gray-50",
                     clickable && cfg && !selected && "hover:opacity-80",
+                    clickable && isUnfilled && !selected && "hover:bg-red-100",
                     !isEditable && !weekend && !future && !cfg && "opacity-60",
                     isPickerOpen && "ring-2 ring-blue-400",
                   )}
@@ -683,6 +705,11 @@ export function CalendarPage() {
                   {cfg && !selected && (
                     <span className={clsx("mt-1 text-[9px] font-semibold uppercase tracking-wide", cfg.text)}>
                       {cfg.label}
+                    </span>
+                  )}
+                  {isUnfilled && !selected && (
+                    <span className="mt-0.5 text-[9px] font-semibold uppercase tracking-wide text-red-500">
+                      unfilled
                     </span>
                   )}
                   {selected && (
@@ -716,6 +743,12 @@ export function CalendarPage() {
                 {cfg.label}
               </span>
             )
+          )}
+          {unfilledWorkdays.size > 0 && (
+            <span className="flex items-center gap-1 text-red-500 font-medium">
+              <span className="inline-block h-3 w-3 rounded-full bg-red-200 ring-1 ring-red-300" />
+              {unfilledWorkdays.size} unfilled
+            </span>
           )}
           <span className="ml-auto text-gray-400">
             {!isEditable

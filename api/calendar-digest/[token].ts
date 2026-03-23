@@ -4,9 +4,85 @@ import { prisma } from "@orbs/db";
 import type { DigestConfirmRequest, DigestEntry, DigestEmployee, CalendarDigestData } from "@orbs/shared";
 import {
   getWorkdaysInRange,
-  applyAttendanceIfAbsent,
   applyAttendanceForced,
 } from "../../lib/calendar-digest-helpers.js";
+import { getReportingMonth } from "@orbs/shared";
+import { email } from "../../apps/api/src/services/email.js";
+
+/**
+ * Check if an employee has a SUBMITTED monthly report covering the given date range.
+ * If so, send an email alert to the calendar-digest admin about the discrepancy.
+ */
+async function checkSubmittedReportMismatch(
+  orgId: string,
+  employeeId: string,
+  startDate: string,
+  endDate: string,
+) {
+  try {
+    // Find the org's monthStartDay to determine which reporting months are affected
+    const org = await prisma.org.findUnique({
+      where: { id: orgId },
+      select: { monthStartDay: true, calendarDigestAdminUserId: true },
+    });
+    if (!org) return;
+
+    // Get the reporting months that the date range spans
+    const startReporting = getReportingMonth(startDate, org.monthStartDay);
+    const endReporting = getReportingMonth(endDate, org.monthStartDay);
+
+    // Collect unique month/year combos
+    const periods = new Set<string>();
+    periods.add(`${startReporting.month}-${startReporting.year}`);
+    periods.add(`${endReporting.month}-${endReporting.year}`);
+
+    const employee = await prisma.employee.findUnique({
+      where: { id: employeeId },
+      select: { firstName: true, lastName: true },
+    });
+    if (!employee) return;
+
+    for (const key of periods) {
+      const [m, y] = key.split("-").map(Number);
+      const report = await prisma.monthlyReport.findUnique({
+        where: {
+          orgId_employeeId_month_year: {
+            orgId,
+            employeeId,
+            month: m,
+            year: y,
+          },
+        },
+        select: { status: true },
+      });
+
+      if (report && report.status === "SUBMITTED") {
+        // Report was already submitted — admin edit creates a mismatch
+        // Send email to admin
+        if (org.calendarDigestAdminUserId) {
+          const adminUser = await prisma.user.findUnique({
+            where: { id: org.calendarDigestAdminUserId },
+            select: { email: true, displayName: true },
+          });
+          if (adminUser) {
+            const periodLabel = `${new Date(y, m - 1).toLocaleString("default", { month: "long" })} ${y}`;
+            await email.alertException({
+              orgId,
+              managerEmail: adminUser.email,
+              exceptionType: "Submitted Report Mismatch",
+              employeeName: `${employee.firstName} ${employee.lastName}`,
+              details: `An admin update from Calendar Digest modified attendance for ${startDate} to ${endDate}, but ${employee.firstName} ${employee.lastName} has already submitted their monthly report for ${periodLabel}. The report data and the calendar now differ — please review and re-approve if needed.`,
+            });
+            console.log(`[CalendarDigest] Mismatch alert sent to ${adminUser.email} for ${employee.firstName} ${employee.lastName} (${periodLabel})`);
+          }
+        }
+      }
+    }
+  } catch (err) {
+    // Don't let email failures block the digest submission
+    console.error("[CalendarDigest] Error checking submitted report mismatch:", err);
+  }
+}
 
 export default withPublic(
   async (req: VercelRequest, res: VercelResponse, _ctx) => {
@@ -176,8 +252,11 @@ export default withPublic(
         const effectiveEnd = dec.endDate ?? entry.endDate;
         const workdays = getWorkdaysInRange(effectiveStart, effectiveEnd);
         for (const date of workdays) {
-          await applyAttendanceIfAbsent(digest.orgId, employee, date, status, systemUserId);
+          await applyAttendanceForced(digest.orgId, employee, date, status, systemUserId);
         }
+
+        // Check if employee has a submitted monthly report that now has a mismatch
+        await checkSubmittedReportMismatch(digest.orgId, employeeId, effectiveStart, effectiveEnd);
 
         applied++;
       }
@@ -202,6 +281,9 @@ export default withPublic(
         }
 
         console.log(`[CalendarDigest] Additional entry for employee ${extra.employeeId} (${extra.startDate}→${extra.endDate}): ${entriesCreated} attendance records written`);
+
+        // Check if employee has a submitted monthly report that now has a mismatch
+        await checkSubmittedReportMismatch(digest.orgId, extra.employeeId, extra.startDate, extra.endDate);
 
         // Record in digest entries for audit trail
         await prisma.calendarDigestEntry.create({

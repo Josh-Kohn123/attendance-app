@@ -24,6 +24,7 @@ export default withAuth(
           name: parsed.data.name,
           date: new Date(parsed.data.date),
           recurring: parsed.data.recurring,
+          halfDay: parsed.data.halfDay,
         },
       });
 

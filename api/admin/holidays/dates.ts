@@ -15,7 +15,7 @@ export default withAuth(
 
     const fromDate = new Date(from);
     const toDate = new Date(to);
-    const result: { date: string; name: string }[] = [];
+    const result: { date: string; name: string; halfDay: boolean }[] = [];
 
     for (const h of holidays) {
       if (h.recurring) {
@@ -24,13 +24,13 @@ export default withAuth(
           const d = new Date(h.date);
           d.setFullYear(y);
           if (d >= fromDate && d <= toDate) {
-            result.push({ date: d.toISOString().split("T")[0], name: h.name });
+            result.push({ date: d.toISOString().split("T")[0], name: h.name, halfDay: h.halfDay });
           }
         }
       } else {
         const d = new Date(h.date);
         if (d >= fromDate && d <= toDate) {
-          result.push({ date: d.toISOString().split("T")[0], name: h.name });
+          result.push({ date: d.toISOString().split("T")[0], name: h.name, halfDay: h.halfDay });
         }
       }
     }

@@ -2,7 +2,7 @@ import type { VercelRequest, VercelResponse } from "@vercel/node";
 import { withAuth } from "../../lib/middleware.js";
 import { prisma } from "@orbs/db";
 import { auditLog } from "../../lib/audit.js";
-import { MonthlyReportSubmitSchema } from "@orbs/shared";
+import { MonthlyReportSubmitSchema, getReportingPeriod } from "@orbs/shared";
 
 export default withAuth(
   async (req: VercelRequest, res: VercelResponse, ctx) => {
@@ -23,6 +23,24 @@ export default withAuth(
 
     if (!employee) {
       return res.status(404).json({ ok: false, error: { code: "NO_EMPLOYEE", message: "No employee record" } });
+    }
+
+    // Prevent submission before the reporting period has ended
+    const org = await prisma.org.findUnique({ where: { id: ctx.orgId }, select: { monthStartDay: true } });
+    const monthStartDay = org?.monthStartDay ?? 26;
+    const { to: periodEnd } = getReportingPeriod(month, year, monthStartDay);
+    const today = new Date();
+    today.setHours(0, 0, 0, 0);
+    const endDate = new Date(periodEnd);
+    endDate.setHours(0, 0, 0, 0);
+    if (today <= endDate) {
+      return res.status(400).json({
+        ok: false,
+        error: {
+          code: "PERIOD_NOT_ENDED",
+          message: `Cannot submit before the reporting period ends (${periodEnd}). Please wait until the period has passed.`,
+        },
+      });
     }
 
     // The managerId field on the employee record is the single source of truth for all users,

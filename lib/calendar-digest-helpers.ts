@@ -58,11 +58,11 @@ export async function applyAttendanceForced(
   status: string,
   systemUserId: string,
 ): Promise<boolean> {
-  const existingCalendar = await prisma.attendanceEvent.findFirst({
+  // Find any existing entry for this employee on this date (regardless of source)
+  const existing = await prisma.attendanceEvent.findFirst({
     where: {
       employeeId: employee.id,
       eventType: "CLOCK_IN",
-      source: "GOOGLE_CALENDAR",
       serverTimestamp: {
         gte: new Date(`${dateStr}T00:00:00Z`),
         lte: new Date(`${dateStr}T23:59:59Z`),
@@ -70,11 +70,14 @@ export async function applyAttendanceForced(
     },
     select: { id: true, notes: true },
   });
-  if (existingCalendar) {
-    await prisma.attendanceEvent.update({
-      where: { id: existingCalendar.id },
-      data: { notes: status },
-    });
+  if (existing) {
+    // Override existing entry — admin decision takes precedence
+    if (existing.notes !== status) {
+      await prisma.attendanceEvent.update({
+        where: { id: existing.id },
+        data: { notes: status, source: "GOOGLE_CALENDAR" },
+      });
+    }
     return true;
   }
   await prisma.attendanceEvent.create({

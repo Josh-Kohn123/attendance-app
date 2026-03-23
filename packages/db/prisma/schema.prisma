@@ -326,6 +326,7 @@ model Holiday {
   name      String   @db.VarChar(255)
   date      DateTime @db.Date
   recurring Boolean  @default(false)
+  halfDay   Boolean  @default(false) @map("half_day")
   createdAt DateTime @default(now()) @map("created_at")
 
   org Org @relation(fields: [orgId], references: [id])
