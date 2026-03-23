@@ -171,6 +171,8 @@ function ReportBanner({
   onNotify,
   isNotifying,
   notifySent,
+  isPeriodEnded,
+  periodEndDate,
 }: {
   reportStatus: { status: ReportStatus; reviewerName?: string | null; reviewComment?: string | null };
   onSubmit: () => void;
@@ -180,6 +182,8 @@ function ReportBanner({
   onNotify: () => void;
   isNotifying: boolean;
   notifySent: boolean;
+  isPeriodEnded: boolean;
+  periodEndDate: string;
 }) {
   const st = reportStatus.status;
 
@@ -209,12 +213,14 @@ function ReportBanner({
         <div className="flex items-center gap-2">
           <Send size={16} className="text-gray-400" />
           <span className="text-sm text-gray-600">
-            Fill in attendance for <strong>{employeeName}</strong> and submit when ready.
+            {isPeriodEnded
+              ? <>Fill in attendance for <strong>{employeeName}</strong> and submit when ready.</>
+              : `Submission opens after the reporting period ends (${dayjs(periodEndDate).format("MMM D, YYYY")}).`}
           </span>
         </div>
         <button
           onClick={onSubmit}
-          disabled={isSubmitting}
+          disabled={isSubmitting || !isPeriodEnded}
           className="flex items-center gap-1.5 rounded-lg bg-blue-600 px-4 py-2 text-sm font-medium text-white hover:bg-blue-700 disabled:opacity-50"
         >
           <Send size={14} />
@@ -434,6 +440,12 @@ export function CreateReportPage() {
   const effectiveStatus: ReportStatus = reportStatus?.status ?? "DRAFT";
   const isEditable = ["DRAFT", "REJECTED"].includes(effectiveStatus);
 
+  // Submission is only allowed after the reporting period has ended
+  const isPeriodEnded = useMemo(() => {
+    if (!to) return false;
+    return dayjs().isAfter(dayjs(to), "day");
+  }, [to]);
+
   // Build set of holiday dates and employee days off dates
   const holidayDates = useMemo(() => new Set((holidays ?? []).map((h) => h.date)), [holidays]);
 
@@ -638,6 +650,8 @@ export function CreateReportPage() {
           onNotify={() => notifyEmployee.mutate()}
           isNotifying={notifyEmployee.isPending}
           notifySent={notifySent}
+          isPeriodEnded={isPeriodEnded}
+          periodEndDate={to}
         />
 
         {/* Submit error */}

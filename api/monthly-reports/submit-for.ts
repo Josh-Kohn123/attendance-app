@@ -2,6 +2,7 @@ import type { VercelRequest, VercelResponse } from "@vercel/node";
 import { withAuth } from "../../lib/middleware.js";
 import { prisma } from "@orbs/db";
 import { auditLog } from "../../lib/audit.js";
+import { getReportingPeriod } from "@orbs/shared";
 import type { AuthContext } from "../../lib/auth.js";
 
 async function canManageEmployee(ctx: AuthContext, employeeId: string) {
@@ -39,6 +40,24 @@ export default withAuth(
       return res.status(403).json({
         ok: false,
         error: { code: "SELF_SUBMIT_REQUIRED", message: "This employee must submit their own report" },
+      });
+    }
+
+    // Prevent submission before the reporting period has ended
+    const org = await prisma.org.findUnique({ where: { id: ctx.orgId }, select: { monthStartDay: true } });
+    const monthStartDay = org?.monthStartDay ?? 26;
+    const { to: periodEnd } = getReportingPeriod(month, year, monthStartDay);
+    const today = new Date();
+    today.setHours(0, 0, 0, 0);
+    const endDate = new Date(periodEnd);
+    endDate.setHours(0, 0, 0, 0);
+    if (today <= endDate) {
+      return res.status(400).json({
+        ok: false,
+        error: {
+          code: "PERIOD_NOT_ENDED",
+          message: `Cannot submit before the reporting period ends (${periodEnd}). Please wait until the period has passed.`,
+        },
       });
     }
 
