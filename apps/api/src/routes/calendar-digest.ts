@@ -21,7 +21,9 @@ import type {
   DigestEmployee,
   CalendarDigestData,
 } from "@orbs/shared";
+import { getReportingMonth } from "@orbs/shared";
 import { fetchEventsInRange, extractAbsenceStatus } from "../services/google-calendar.js";
+import { email } from "../services/email.js";
 
 // Weekend days in Israeli work week (no attendance records created)
 const WEEKEND_DAYS = new Set([5, 6]); // Friday, Saturday
@@ -155,6 +157,7 @@ export async function calendarDigestRoutes(app: FastifyInstance) {
   /**
    * POST /calendar-digest/apply
    * Apply confirmed calendar entries to attendance records.
+   * Uses applyAttendanceForced so admin decisions override existing entries.
    */
   app.post(
     "/apply",
@@ -180,6 +183,13 @@ export async function calendarDigestRoutes(app: FastifyInstance) {
         return reply.status(500).send({ ok: false, error: { code: "CONFIG_ERROR", message: "SYSTEM_USER_ID not configured" } });
       }
 
+      // Get admin email for mismatch notifications
+      const adminUser = await prisma.user.findUnique({
+        where: { id: request.currentUserId! },
+        select: { email: true },
+      });
+      const adminEmail = adminUser?.email ?? "";
+
       let applied = 0;
 
       const allEntries = [...entries, ...additionalEntries];
@@ -192,9 +202,17 @@ export async function calendarDigestRoutes(app: FastifyInstance) {
         if (!employee || !employee.isActive || employee.orgId !== request.currentOrgId!) continue;
 
         const workdays = getWorkdaysInRange(entry.startDate, entry.endDate);
+        const changes: Array<{ date: string; previousStatus: string | null; newStatus: string }> = [];
         for (const date of workdays) {
-          await applyAttendanceIfAbsent(request.currentOrgId!, employee, date, entry.status, systemUserId);
+          const { previousStatus } = await applyAttendanceForced(request.currentOrgId!, employee, date, entry.status, systemUserId);
+          changes.push({ date, previousStatus, newStatus: entry.status });
         }
+
+        // Check if this employee has a submitted report that now mismatches
+        if (adminEmail) {
+          await checkSubmittedReportMismatch(request.currentOrgId!, entry.employeeId, entry.startDate, entry.endDate, adminEmail, changes);
+        }
+
         applied++;
       }
 
@@ -500,13 +518,11 @@ async function applyAttendanceIfAbsent(
 }
 
 /**
- * Create or update an attendance CLOCK_IN event for a manual admin entry.
+ * Create or update an attendance CLOCK_IN event for an admin override.
  *
- * Unlike applyAttendanceIfAbsent, this always writes the record:
- * - If a GOOGLE_CALENDAR CLOCK_IN already exists for the day, its status is updated.
- * - If a device/kiosk CLOCK_IN exists, a separate GOOGLE_CALENDAR record is created
- *   so the manual entry is preserved alongside the physical clock-in.
- * - Returns true if a record was created or updated, false if nothing changed.
+ * Finds any existing CLOCK_IN for this employee on this date (regardless of source)
+ * and updates it. If none exists, creates a new GOOGLE_CALENDAR entry.
+ * Admin decisions always take precedence over employee self-submissions.
  */
 async function applyAttendanceForced(
   orgId: string,
@@ -514,13 +530,12 @@ async function applyAttendanceForced(
   dateStr: string,
   status: string,
   systemUserId: string,
-): Promise<boolean> {
-  // Check for an existing GOOGLE_CALENDAR CLOCK_IN on this day
-  const existingCalendar = await prisma.attendanceEvent.findFirst({
+): Promise<{ previousStatus: string | null }> {
+  // Find any existing entry for this employee on this date (regardless of source)
+  const existing = await prisma.attendanceEvent.findFirst({
     where: {
       employeeId: employee.id,
       eventType: "CLOCK_IN",
-      source: "GOOGLE_CALENDAR",
       serverTimestamp: {
         gte: new Date(`${dateStr}T00:00:00Z`),
         lte: new Date(`${dateStr}T23:59:59Z`),
@@ -529,17 +544,19 @@ async function applyAttendanceForced(
     select: { id: true, notes: true },
   });
 
-  if (existingCalendar) {
-    // Update the existing calendar entry with the new status
-    await prisma.attendanceEvent.update({
-      where: { id: existingCalendar.id },
-      data: { notes: status },
-    });
-    console.log(`[CalendarDigest] Updated existing GOOGLE_CALENDAR entry for ${employee.id} on ${dateStr}: ${existingCalendar.notes} → ${status}`);
-    return true;
+  if (existing) {
+    const previousStatus = existing.notes;
+    // Override existing entry — admin decision takes precedence
+    if (existing.notes !== status) {
+      await prisma.attendanceEvent.update({
+        where: { id: existing.id },
+        data: { notes: status, source: "GOOGLE_CALENDAR" },
+      });
+    }
+    return { previousStatus };
   }
 
-  // No calendar entry — create one (even if a kiosk entry exists)
+  // No entry exists — create a new one
   await prisma.attendanceEvent.create({
     data: {
       orgId,
@@ -553,5 +570,98 @@ async function applyAttendanceForced(
       notes: status,
     },
   });
-  return true;
+  return { previousStatus: null };
+}
+
+/**
+ * Check if an employee has a SUBMITTED/APPROVED monthly report covering the given date range.
+ * If so, send an email alert to the admin about the discrepancy.
+ */
+async function checkSubmittedReportMismatch(
+  orgId: string,
+  employeeId: string,
+  startDate: string,
+  endDate: string,
+  adminEmail: string,
+  changes: Array<{ date: string; previousStatus: string | null; newStatus: string }>,
+) {
+  try {
+    const org = await prisma.org.findUnique({
+      where: { id: orgId },
+      select: { monthStartDay: true },
+    });
+    if (!org) return;
+
+    // Determine which reporting months are affected
+    const startReporting = getReportingMonth(startDate, org.monthStartDay);
+    const endReporting = getReportingMonth(endDate, org.monthStartDay);
+
+    const periods = new Set<string>();
+    periods.add(`${startReporting.month}-${startReporting.year}`);
+    periods.add(`${endReporting.month}-${endReporting.year}`);
+
+    const employee = await prisma.employee.findUnique({
+      where: { id: employeeId },
+      select: { firstName: true, lastName: true },
+    });
+    if (!employee) return;
+
+    for (const key of periods) {
+      const [m, y] = key.split("-").map(Number);
+      const report = await prisma.monthlyReport.findUnique({
+        where: {
+          orgId_employeeId_month_year: {
+            orgId,
+            employeeId,
+            month: m,
+            year: y,
+          },
+        },
+        select: { status: true },
+      });
+
+      if (report && (report.status === "SUBMITTED" || report.status === "APPROVED")) {
+        const periodLabel = `${new Date(y, m - 1).toLocaleString("default", { month: "long" })} ${y}`;
+        const empName = `${employee.firstName} ${employee.lastName}`;
+        const reportStatusLabel = report.status === "APPROVED"
+          ? "had their report approved"
+          : "submitted their monthly report";
+
+        // Build changes table rows
+        const changesTableRows = changes
+          .map((c) => {
+            const prev = c.previousStatus ?? "—";
+            return `<tr>
+              <td style="padding:6px 12px;border:1px solid #e5e7eb;">${c.date}</td>
+              <td style="padding:6px 12px;border:1px solid #e5e7eb;">${prev}</td>
+              <td style="padding:6px 12px;border:1px solid #e5e7eb;font-weight:600;">${c.newStatus}</td>
+            </tr>`;
+          })
+          .join("");
+
+        const changesTable = `
+          <table style="width:100%;border-collapse:collapse;margin:16px 0;font-size:14px;">
+            <thead>
+              <tr style="background-color:#f3f4f6;">
+                <th style="padding:8px 12px;border:1px solid #e5e7eb;text-align:left;">Date</th>
+                <th style="padding:8px 12px;border:1px solid #e5e7eb;text-align:left;">Previous</th>
+                <th style="padding:8px 12px;border:1px solid #e5e7eb;text-align:left;">Updated</th>
+              </tr>
+            </thead>
+            <tbody>${changesTableRows}</tbody>
+          </table>`;
+
+        await email.alertException({
+          orgId,
+          managerEmail: adminEmail,
+          exceptionType: "Submitted Report Mismatch",
+          employeeName: empName,
+          details: `An admin update from Calendar Digest modified attendance for <strong>${empName}</strong>, who has already ${reportStatusLabel} for ${periodLabel}. The employee's report has been updated to reflect the admin's input.${changesTable}<p style="margin-top:16px;color:#991b1b;font-weight:500;">If this report was already downloaded and saved to bookkeeping, the bookkeeping records will need to be updated as well.</p>`,
+        });
+        console.log(`[CalendarDigest] Mismatch alert sent to ${adminEmail} for ${empName} (${periodLabel})`);
+      }
+    }
+  } catch (err) {
+    console.error("[CalendarDigest] Error checking submitted report mismatch:", err);
+  }
 }

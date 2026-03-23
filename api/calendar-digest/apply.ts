@@ -7,7 +7,7 @@ import { email } from "../../apps/api/src/services/email.js";
 
 /**
  * Check if an employee has a SUBMITTED/APPROVED monthly report covering the given date range.
- * If so, send an email alert to the admin about the discrepancy.
+ * If so, send an email alert to the admin about the discrepancy including a table of changes.
  */
 async function checkSubmittedReportMismatch(
   orgId: string,
@@ -15,6 +15,7 @@ async function checkSubmittedReportMismatch(
   startDate: string,
   endDate: string,
   adminEmail: string,
+  changes: Array<{ date: string; previousStatus: string | null; newStatus: string }>,
 ) {
   try {
     const org = await prisma.org.findUnique({
@@ -54,12 +55,40 @@ async function checkSubmittedReportMismatch(
       if (report && (report.status === "SUBMITTED" || report.status === "APPROVED")) {
         const periodLabel = `${new Date(y, m - 1).toLocaleString("default", { month: "long" })} ${y}`;
         const empName = `${employee.firstName} ${employee.lastName}`;
+        const reportStatusLabel = report.status === "APPROVED"
+          ? "had their report approved"
+          : "submitted their monthly report";
+
+        // Build changes table rows
+        const changesTableRows = changes
+          .map((c) => {
+            const prev = c.previousStatus ?? "—";
+            return `<tr>
+              <td style="padding:6px 12px;border:1px solid #e5e7eb;">${c.date}</td>
+              <td style="padding:6px 12px;border:1px solid #e5e7eb;">${prev}</td>
+              <td style="padding:6px 12px;border:1px solid #e5e7eb;font-weight:600;">${c.newStatus}</td>
+            </tr>`;
+          })
+          .join("");
+
+        const changesTable = `
+          <table style="width:100%;border-collapse:collapse;margin:16px 0;font-size:14px;">
+            <thead>
+              <tr style="background-color:#f3f4f6;">
+                <th style="padding:8px 12px;border:1px solid #e5e7eb;text-align:left;">Date</th>
+                <th style="padding:8px 12px;border:1px solid #e5e7eb;text-align:left;">Previous</th>
+                <th style="padding:8px 12px;border:1px solid #e5e7eb;text-align:left;">Updated</th>
+              </tr>
+            </thead>
+            <tbody>${changesTableRows}</tbody>
+          </table>`;
+
         await email.alertException({
           orgId,
           managerEmail: adminEmail,
           exceptionType: "Submitted Report Mismatch",
           employeeName: empName,
-          details: `An admin update from Calendar Digest modified attendance for ${startDate} to ${endDate}, but ${empName} has already ${report.status === "APPROVED" ? "had their report approved" : "submitted their monthly report"} for ${periodLabel}. The report data and the calendar now differ — please review and re-approve if needed.`,
+          details: `An admin update from Calendar Digest modified attendance for <strong>${empName}</strong>, who has already ${reportStatusLabel} for ${periodLabel}. The employee's report has been updated to reflect the admin's input.${changesTable}<p style="margin-top:16px;color:#991b1b;font-weight:500;">If this report was already downloaded and saved to bookkeeping, the bookkeeping records will need to be updated as well.</p>`,
         });
         console.log(`[CalendarDigest] Mismatch alert sent to ${adminEmail} for ${empName} (${periodLabel})`);
       }
@@ -110,13 +139,15 @@ export default withAuth(
       if (!employee || !employee.isActive || employee.orgId !== ctx.orgId) continue;
 
       const workdays = getWorkdaysInRange(entry.startDate, entry.endDate);
+      const changes: Array<{ date: string; previousStatus: string | null; newStatus: string }> = [];
       for (const date of workdays) {
-        await applyAttendanceForced(ctx.orgId, employee, date, entry.status, systemUserId);
+        const { previousStatus } = await applyAttendanceForced(ctx.orgId, employee, date, entry.status, systemUserId);
+        changes.push({ date, previousStatus, newStatus: entry.status });
       }
 
       // Check if this employee has a submitted report that now mismatches
       if (adminEmail) {
-        await checkSubmittedReportMismatch(ctx.orgId, entry.employeeId, entry.startDate, entry.endDate, adminEmail);
+        await checkSubmittedReportMismatch(ctx.orgId, entry.employeeId, entry.startDate, entry.endDate, adminEmail, changes);
       }
 
       applied++;

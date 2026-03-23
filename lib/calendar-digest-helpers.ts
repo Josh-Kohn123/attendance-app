@@ -57,7 +57,7 @@ export async function applyAttendanceForced(
   dateStr: string,
   status: string,
   systemUserId: string,
-): Promise<boolean> {
+): Promise<{ previousStatus: string | null }> {
   // Find any existing entry for this employee on this date (regardless of source)
   const existing = await prisma.attendanceEvent.findFirst({
     where: {
@@ -71,6 +71,7 @@ export async function applyAttendanceForced(
     select: { id: true, notes: true },
   });
   if (existing) {
+    const previousStatus = existing.notes;
     // Override existing entry — admin decision takes precedence
     if (existing.notes !== status) {
       await prisma.attendanceEvent.update({
@@ -78,7 +79,7 @@ export async function applyAttendanceForced(
         data: { notes: status, source: "GOOGLE_CALENDAR" },
       });
     }
-    return true;
+    return { previousStatus };
   }
   await prisma.attendanceEvent.create({
     data: {
@@ -93,5 +94,5 @@ export async function applyAttendanceForced(
       notes: status,
     },
   });
-  return true;
+  return { previousStatus: null };
 }

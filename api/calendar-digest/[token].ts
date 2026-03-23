@@ -10,7 +10,7 @@ import { getReportingMonth } from "@orbs/shared";
 import { email } from "../../apps/api/src/services/email.js";
 
 /**
- * Check if an employee has a SUBMITTED monthly report covering the given date range.
+ * Check if an employee has a SUBMITTED/APPROVED monthly report covering the given date range.
  * If so, send an email alert to the calendar-digest admin about the discrepancy.
  */
 async function checkSubmittedReportMismatch(
@@ -18,6 +18,7 @@ async function checkSubmittedReportMismatch(
   employeeId: string,
   startDate: string,
   endDate: string,
+  changes: Array<{ date: string; previousStatus: string | null; newStatus: string }>,
 ) {
   try {
     // Find the org's monthStartDay to determine which reporting months are affected
@@ -56,24 +57,52 @@ async function checkSubmittedReportMismatch(
         select: { status: true },
       });
 
-      if (report && report.status === "SUBMITTED") {
+      if (report && (report.status === "SUBMITTED" || report.status === "APPROVED")) {
         // Report was already submitted — admin edit creates a mismatch
-        // Send email to admin
         if (org.calendarDigestAdminUserId) {
           const adminUser = await prisma.user.findUnique({
             where: { id: org.calendarDigestAdminUserId },
-            select: { email: true, displayName: true },
+            select: { email: true },
           });
           if (adminUser) {
             const periodLabel = `${new Date(y, m - 1).toLocaleString("default", { month: "long" })} ${y}`;
+            const empName = `${employee.firstName} ${employee.lastName}`;
+            const reportStatusLabel = report.status === "APPROVED"
+              ? "had their report approved"
+              : "submitted their monthly report";
+
+            // Build changes table rows
+            const changesTableRows = changes
+              .map((c) => {
+                const prev = c.previousStatus ?? "—";
+                return `<tr>
+                  <td style="padding:6px 12px;border:1px solid #e5e7eb;">${c.date}</td>
+                  <td style="padding:6px 12px;border:1px solid #e5e7eb;">${prev}</td>
+                  <td style="padding:6px 12px;border:1px solid #e5e7eb;font-weight:600;">${c.newStatus}</td>
+                </tr>`;
+              })
+              .join("");
+
+            const changesTable = `
+              <table style="width:100%;border-collapse:collapse;margin:16px 0;font-size:14px;">
+                <thead>
+                  <tr style="background-color:#f3f4f6;">
+                    <th style="padding:8px 12px;border:1px solid #e5e7eb;text-align:left;">Date</th>
+                    <th style="padding:8px 12px;border:1px solid #e5e7eb;text-align:left;">Previous</th>
+                    <th style="padding:8px 12px;border:1px solid #e5e7eb;text-align:left;">Updated</th>
+                  </tr>
+                </thead>
+                <tbody>${changesTableRows}</tbody>
+              </table>`;
+
             await email.alertException({
               orgId,
               managerEmail: adminUser.email,
               exceptionType: "Submitted Report Mismatch",
-              employeeName: `${employee.firstName} ${employee.lastName}`,
-              details: `An admin update from Calendar Digest modified attendance for ${startDate} to ${endDate}, but ${employee.firstName} ${employee.lastName} has already submitted their monthly report for ${periodLabel}. The report data and the calendar now differ — please review and re-approve if needed.`,
+              employeeName: empName,
+              details: `An admin update from Calendar Digest modified attendance for <strong>${empName}</strong>, who has already ${reportStatusLabel} for ${periodLabel}. The employee's report has been updated to reflect the admin's input.${changesTable}<p style="margin-top:16px;color:#991b1b;font-weight:500;">If this report was already downloaded and saved to bookkeeping, the bookkeeping records will need to be updated as well.</p>`,
             });
-            console.log(`[CalendarDigest] Mismatch alert sent to ${adminUser.email} for ${employee.firstName} ${employee.lastName} (${periodLabel})`);
+            console.log(`[CalendarDigest] Mismatch alert sent to ${adminUser.email} for ${empName} (${periodLabel})`);
           }
         }
       }
@@ -251,12 +280,14 @@ export default withPublic(
         const effectiveStart = dec.startDate ?? entry.startDate;
         const effectiveEnd = dec.endDate ?? entry.endDate;
         const workdays = getWorkdaysInRange(effectiveStart, effectiveEnd);
+        const changes: Array<{ date: string; previousStatus: string | null; newStatus: string }> = [];
         for (const date of workdays) {
-          await applyAttendanceForced(digest.orgId, employee, date, status, systemUserId);
+          const { previousStatus } = await applyAttendanceForced(digest.orgId, employee, date, status, systemUserId);
+          changes.push({ date, previousStatus, newStatus: status });
         }
 
         // Check if employee has a submitted monthly report that now has a mismatch
-        await checkSubmittedReportMismatch(digest.orgId, employeeId, effectiveStart, effectiveEnd);
+        await checkSubmittedReportMismatch(digest.orgId, employeeId, effectiveStart, effectiveEnd, changes);
 
         applied++;
       }
@@ -274,16 +305,16 @@ export default withPublic(
         }
 
         const workdays = getWorkdaysInRange(extra.startDate, extra.endDate);
-        let entriesCreated = 0;
+        const changes: Array<{ date: string; previousStatus: string | null; newStatus: string }> = [];
         for (const date of workdays) {
-          const created = await applyAttendanceForced(digest.orgId, employee, date, extra.status, systemUserId);
-          if (created) entriesCreated++;
+          const { previousStatus } = await applyAttendanceForced(digest.orgId, employee, date, extra.status, systemUserId);
+          changes.push({ date, previousStatus, newStatus: extra.status });
         }
 
-        console.log(`[CalendarDigest] Additional entry for employee ${extra.employeeId} (${extra.startDate}→${extra.endDate}): ${entriesCreated} attendance records written`);
+        console.log(`[CalendarDigest] Additional entry for employee ${extra.employeeId} (${extra.startDate}→${extra.endDate}): ${changes.length} attendance records written`);
 
         // Check if employee has a submitted monthly report that now has a mismatch
-        await checkSubmittedReportMismatch(digest.orgId, extra.employeeId, extra.startDate, extra.endDate);
+        await checkSubmittedReportMismatch(digest.orgId, extra.employeeId, extra.startDate, extra.endDate, changes);
 
         // Record in digest entries for audit trail
         await prisma.calendarDigestEntry.create({
@@ -302,7 +333,7 @@ export default withPublic(
           },
         });
 
-        if (entriesCreated > 0) applied++;
+        if (changes.length > 0) applied++;
       }
 
       // Mark digest as submitted
