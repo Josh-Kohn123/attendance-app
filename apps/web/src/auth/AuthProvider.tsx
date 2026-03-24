@@ -14,6 +14,7 @@ interface User {
     position: string | null;
     department: string | null;
     site: string;
+    daysOff: string[];
   } | null;
 }
 

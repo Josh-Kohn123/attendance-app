@@ -1,4 +1,5 @@
 import { useState, useMemo } from "react";
+import { useAuth } from "../../../../auth/AuthProvider";
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import { api } from "../../../../api/client";
 import {
@@ -315,16 +316,9 @@ export function CalendarPage() {
 
   const periodLabel = `${dayjs(from).format("MMM D")} - ${dayjs(to).format("MMM D, YYYY")}`;
 
-  // ── Fetch own employee record (for daysOff) ──
-  const { data: selfEmployee } = useQuery({
-    queryKey: ["employees", "self"],
-    queryFn: () => api.get<any>("/employees?limit=1"),
-    retry: false,
-  });
-  const employeeDaysOff: string[] = useMemo(() => {
-    const items = (selfEmployee as any)?.items ?? [];
-    return items[0]?.daysOff ?? [];
-  }, [selfEmployee]);
+  // ── Current user's days off (from auth context) ──
+  const { user } = useAuth();
+  const employeeDaysOff: string[] = user?.employee?.daysOff ?? [];
 
   // ── Fetch holidays for this period ──
   const { data: holidays } = useQuery({

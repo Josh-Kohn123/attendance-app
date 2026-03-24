@@ -146,6 +146,7 @@ export async function authRoutes(app: FastifyInstance) {
               position: user.employee.position,
               department: user.employee.department?.name ?? null,
               site: user.employee.site.name,
+              daysOff: user.employee.daysOff ?? [],
             }
           : null,
       },
