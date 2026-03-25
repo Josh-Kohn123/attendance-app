@@ -314,6 +314,10 @@ export function AdminCalendarDigestPage() {
   // Clamp "to" to today if the period extends into the future
   const effectiveTo = periodTo > today ? today : periodTo;
 
+  // Manual date range inputs — default to current reporting period
+  const [fromDate, setFromDate] = useState(periodFrom);
+  const [toDate, setToDate] = useState(effectiveTo);
+
   const [fetchResult, setFetchResult] = useState<FetchResult | null>(null);
   const [decisions, setDecisions] = useState<Record<string, LocalDecision>>({});
   const [additionalEntries, setAdditionalEntries] = useState<Array<{ employeeId: string; status: string; startDate: string; endDate: string; _key: number }>>([]);
@@ -321,7 +325,7 @@ export function AdminCalendarDigestPage() {
 
   // Fetch events mutation
   const fetchMutation = useMutation({
-    mutationFn: () => api.get<FetchResult>(`/calendar-digest/fetch?from=${periodFrom}&to=${effectiveTo}`),
+    mutationFn: () => api.get<FetchResult>(`/calendar-digest/fetch?from=${fromDate}&to=${toDate}`),
     onSuccess: (data) => {
       setFetchResult(data);
       setDecisions({});
@@ -392,31 +396,41 @@ export function AdminCalendarDigestPage() {
 
   return (
     <div className="mx-auto max-w-3xl">
-      {/* Header */}
+      {/* Header + date range inputs */}
       <div className="mb-6">
         <h1 className="text-xl font-semibold text-gray-900">Calendar Digest</h1>
-        <p className="text-sm text-gray-500 mt-1">
-          Reporting period: <span className="font-medium text-gray-700">{periodFrom}</span> to{" "}
-          <span className="font-medium text-gray-700">{effectiveTo}</span>
-        </p>
-      </div>
-
-      {/* Fetch button */}
-      {!fetchResult && (
-        <div className="text-center py-12">
-          <p className="text-gray-500 mb-4">Fetch events from Google Calendar for the current reporting period.</p>
+        <div className="mt-3 flex flex-wrap items-end gap-3">
+          <div>
+            <label className="block text-xs text-gray-500 mb-1">From</label>
+            <input
+              type="date"
+              value={fromDate}
+              onChange={(e) => setFromDate(e.target.value)}
+              className="rounded-lg border px-3 py-1.5 text-sm"
+            />
+          </div>
+          <div>
+            <label className="block text-xs text-gray-500 mb-1">To</label>
+            <input
+              type="date"
+              value={toDate}
+              min={fromDate}
+              onChange={(e) => setToDate(e.target.value)}
+              className="rounded-lg border px-3 py-1.5 text-sm"
+            />
+          </div>
           <button
             onClick={() => fetchMutation.mutate()}
-            disabled={fetchMutation.isPending}
-            className="rounded-lg bg-blue-600 px-6 py-2.5 text-sm font-medium text-white hover:bg-blue-700 disabled:opacity-50"
+            disabled={fetchMutation.isPending || !fromDate || !toDate}
+            className="rounded-lg bg-blue-600 px-5 py-1.5 text-sm font-medium text-white hover:bg-blue-700 disabled:opacity-50"
           >
             {fetchMutation.isPending ? "Fetching..." : "Fetch Calendar Events"}
           </button>
-          {fetchMutation.isError && (
-            <p className="mt-3 text-sm text-red-600">{(fetchMutation.error as Error).message}</p>
-          )}
         </div>
-      )}
+        {fetchMutation.isError && (
+          <p className="mt-2 text-sm text-red-600">{(fetchMutation.error as Error).message}</p>
+        )}
+      </div>
 
       {/* Results */}
       {fetchResult && (
