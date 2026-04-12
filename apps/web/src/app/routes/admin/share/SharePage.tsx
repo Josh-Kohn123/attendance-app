@@ -10,12 +10,10 @@ import { useState } from "react";
 import { useQuery, useMutation } from "@tanstack/react-query";
 import { api } from "../../../../api/client";
 import { getReportingPeriod } from "@orbs/shared";
-import { Download, Mail, FileSpreadsheet, FileText } from "lucide-react";
+import { Mail, FileSpreadsheet, FileText, ChevronLeft, ChevronRight, Calendar } from "lucide-react";
 import dayjs from "dayjs";
 
 export function SharePage() {
-  const today = dayjs().format("YYYY-MM-DD");
-
   // Fetch org config to get monthStartDay
   const { data: org } = useQuery<{ monthStartDay: number }>({
     queryKey: ["org-config"],
@@ -24,15 +22,25 @@ export function SharePage() {
 
   const monthStartDay = org?.monthStartDay ?? 26;
 
-  // Compute current reporting period
+  // Compute *current* reporting month to use as the default
   const now = dayjs();
   const currentDay = now.date();
-  const labelMonth = currentDay >= monthStartDay ? now.month() + 2 : now.month() + 1;
-  const labelYear = labelMonth > 12 ? now.year() + 1 : now.year();
-  const adjustedMonth = labelMonth > 12 ? labelMonth - 12 : labelMonth;
+  const currentLabelMonth = currentDay >= monthStartDay ? now.month() + 2 : now.month() + 1;
+  const currentLabelYear = currentLabelMonth > 12 ? now.year() + 1 : now.year();
+  const currentMonth = currentLabelMonth > 12 ? currentLabelMonth - 12 : currentLabelMonth;
+  const currentYear = currentLabelYear;
 
-  const { from: periodFrom, to: periodTo } = getReportingPeriod(adjustedMonth, labelYear, monthStartDay);
-  const periodLabel = `${new Date(labelYear, adjustedMonth - 1).toLocaleString("default", { month: "long" })} ${labelYear}`;
+  // Selectable month/year — defaults to the current reporting period
+  const [m, setM] = useState(currentMonth);
+  const [y, setY] = useState(currentYear);
+
+  const { from: periodFrom, to: periodTo } = getReportingPeriod(m, y, monthStartDay);
+  const periodLabel = dayjs().year(y).month(m - 1).format("MMMM YYYY");
+  const isCurrentPeriod = m === currentMonth && y === currentYear;
+
+  const goBack = () => { if (m === 1) { setM(12); setY(y - 1); } else setM(m - 1); };
+  const goForward = () => { if (m === 12) { setM(1); setY(y + 1); } else setM(m + 1); };
+  const goToCurrent = () => { setM(currentMonth); setY(currentYear); };
 
   const [showConfirm, setShowConfirm] = useState(false);
 
@@ -62,8 +70,8 @@ export function SharePage() {
       api.post<{ sent: number }>("/reports/send-manager-summaries", {
         from: periodFrom,
         to: periodTo,
-        month: adjustedMonth,
-        year: labelYear,
+        month: m,
+        year: y,
       }),
     onSuccess: () => setShowConfirm(false),
   });
@@ -71,7 +79,25 @@ export function SharePage() {
   return (
     <div className="mx-auto max-w-2xl">
       <div className="mb-6">
-        <h1 className="text-xl font-semibold text-gray-900">Share</h1>
+        <div className="flex items-center justify-between">
+          <h1 className="text-xl font-semibold text-gray-900">Share</h1>
+          <div className="flex items-center gap-2">
+            <button onClick={goBack} className="rounded-lg border px-2.5 py-1.5 text-sm hover:bg-gray-50">
+              <ChevronLeft size={16} />
+            </button>
+            <button
+              onClick={goToCurrent}
+              disabled={isCurrentPeriod}
+              className="flex items-center gap-1.5 rounded-lg border px-3 py-1.5 text-sm hover:bg-gray-50 disabled:opacity-50 disabled:cursor-default"
+            >
+              <Calendar size={14} />
+              Current period
+            </button>
+            <button onClick={goForward} className="rounded-lg border px-2.5 py-1.5 text-sm hover:bg-gray-50">
+              <ChevronRight size={16} />
+            </button>
+          </div>
+        </div>
         <p className="text-sm text-gray-500 mt-1">
           Reporting period: <span className="font-medium text-gray-700">{periodLabel}</span>{" "}
           ({periodFrom} to {periodTo})
@@ -82,7 +108,7 @@ export function SharePage() {
       <div className="rounded-xl border bg-white p-6 mb-4">
         <h2 className="text-base font-semibold text-gray-900 mb-1">Download Reports</h2>
         <p className="text-sm text-gray-500 mb-4">
-          Download the full attendance report for the current reporting period.
+          Download the full attendance report for {periodLabel}.
         </p>
         <div className="flex gap-3">
           <button
@@ -106,7 +132,7 @@ export function SharePage() {
       <div className="rounded-xl border bg-white p-6">
         <h2 className="text-base font-semibold text-gray-900 mb-1">Send Manager Summaries</h2>
         <p className="text-sm text-gray-500 mb-4">
-          Send an attendance summary email to each manager with their team's data for this period.
+          Send an attendance summary email to each manager with their team's data for {periodLabel}.
         </p>
 
         {!showConfirm ? (
