@@ -208,7 +208,7 @@ export default withAuth(
       // ────────────────────────────────────────────────────
       const ws2 = wb.addWorksheet("report");
 
-      const summaryHeaders = ["שם עובד", "תג עובד", "ימי נוכחות", "Vacation", "Military service", "Child sick", "Choice Day", "Advanced Study", "", "Vacation", "Sick day", "Military service"];
+      const summaryHeaders = ["שם עובד", "תג עובד", "ימי דיווח", "Vacation", "Military service", "Child sick", "Choice Day", "Advanced Study", "Half Day Off", "Sick day"];
       const headerRow2 = ws2.addRow(summaryHeaders);
       headerRow2.font = { bold: true, name: "Arial" };
       headerRow2.eachCell((cell) => {
@@ -218,16 +218,24 @@ export default withAuth(
       });
 
       let totalVacation = 0;
-      let totalSick = 0;
       let totalReserves = 0;
+      let totalChildSick = 0;
+      let totalChoiceDay = 0;
+      let totalAdvancedStudy = 0;
+      let totalHalfDay = 0;
+      let totalSick = 0;
 
       for (const emp of employees) {
         const c = empSummary.get(emp.id) ?? { total: 0, present: 0, sick: 0, childSick: 0, vacation: 0, reserves: 0, halfDay: 0, workFromHome: 0, publicHoliday: 0, holidayEve: 0, choiceDay: 0, advancedStudy: 0, dayOff: 0 };
         const attendanceDays = c.total;
 
         totalVacation += c.vacation;
-        totalSick += c.sick;
         totalReserves += c.reserves;
+        totalChildSick += c.childSick;
+        totalChoiceDay += c.choiceDay;
+        totalAdvancedStudy += c.advancedStudy;
+        totalHalfDay += c.halfDay;
+        totalSick += c.sick;
 
         ws2.addRow([
           `${emp.lastName} ${emp.firstName}`,
@@ -238,15 +246,13 @@ export default withAuth(
           c.childSick > 0 ? String(c.childSick) + ".0" : "",
           c.choiceDay > 0 ? String(c.choiceDay) + ".0" : "",
           c.advancedStudy > 0 ? String(c.advancedStudy) + ".0" : "",
-          "", // Empty column
-          c.vacation,
-          c.sick,
-          c.reserves,
+          c.halfDay > 0 ? String(c.halfDay) + ".0" : "",
+          c.sick > 0 ? String(c.sick) + ".0" : "",
         ]);
       }
 
-      // Totals row
-      const totalsRow = ws2.addRow(["", "", "", "", "", "", "", "", "", totalVacation, totalSick, totalReserves]);
+      // Totals row (no sum for שם עובד, תג עובד, ימי דיווח)
+      const totalsRow = ws2.addRow(["", "", "", totalVacation, totalReserves, totalChildSick, totalChoiceDay, totalAdvancedStudy, totalHalfDay, totalSick]);
       totalsRow.font = { bold: true };
 
       // Auto-width columns for summary
@@ -346,8 +352,8 @@ export default withAuth(
         doc.fontSize(9).font("Helvetica").text(`Period: ${period}`, { align: "center" });
         doc.moveDown(0.5);
 
-        const sumCols = ["Employee", "Days", "Vacation", "Sick", "Reserves", "Choice Day", "Advanced Study", "Public Holiday", "Day Off"];
-        const sumWidths = [130, 40, 50, 40, 50, 55, 60, 60, 40];
+        const sumCols = ["Employee", "Days", "Vacation", "Reserves", "Child Sick", "Choice Day", "Advanced Study", "Half Day Off", "Sick"];
+        const sumWidths = [130, 40, 50, 50, 55, 55, 60, 60, 40];
 
         y = doc.y;
         doc.fontSize(8).font("Helvetica-Bold");
@@ -361,16 +367,30 @@ export default withAuth(
         y += 4;
 
         doc.font("Helvetica").fontSize(8);
+        let pdfTotalVacation = 0, pdfTotalReserves = 0, pdfTotalChildSick = 0, pdfTotalChoiceDay = 0, pdfTotalAdvancedStudy = 0, pdfTotalHalfDay = 0, pdfTotalSick = 0;
         for (const emp of employees) {
           if (y > 540) { doc.addPage(); y = 40; }
           const c = empSummary.get(emp.id) ?? { total: 0, present: 0, sick: 0, childSick: 0, vacation: 0, reserves: 0, halfDay: 0, workFromHome: 0, publicHoliday: 0, holidayEve: 0, choiceDay: 0, advancedStudy: 0, dayOff: 0 };
-          const vals = [`${emp.lastName} ${emp.firstName}`, String(c.total), String(c.vacation), String(c.sick), String(c.reserves), String(c.choiceDay), String(c.advancedStudy), String(c.publicHoliday), String(c.dayOff)];
+          pdfTotalVacation += c.vacation; pdfTotalReserves += c.reserves; pdfTotalChildSick += c.childSick;
+          pdfTotalChoiceDay += c.choiceDay; pdfTotalAdvancedStudy += c.advancedStudy; pdfTotalHalfDay += c.halfDay; pdfTotalSick += c.sick;
+          const vals = [`${emp.lastName} ${emp.firstName}`, String(c.total), String(c.vacation), String(c.reserves), String(c.childSick), String(c.choiceDay), String(c.advancedStudy), String(c.halfDay), String(c.sick)];
           x = startX;
           for (let i = 0; i < vals.length; i++) {
             doc.text(vals[i], x, y, { width: sumWidths[i], align: "left" });
             x += sumWidths[i] + 6;
           }
           y += 12;
+        }
+
+        // Totals row (no sum for Employee or Days)
+        if (y > 540) { doc.addPage(); y = 40; }
+        y += 4;
+        doc.font("Helvetica-Bold").fontSize(8);
+        const totalVals = ["", "", String(pdfTotalVacation), String(pdfTotalReserves), String(pdfTotalChildSick), String(pdfTotalChoiceDay), String(pdfTotalAdvancedStudy), String(pdfTotalHalfDay), String(pdfTotalSick)];
+        x = startX;
+        for (let i = 0; i < totalVals.length; i++) {
+          doc.text(totalVals[i], x, y, { width: sumWidths[i], align: "left" });
+          x += sumWidths[i] + 6;
         }
 
         doc.end();
