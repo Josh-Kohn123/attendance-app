@@ -13,6 +13,9 @@ const STATUS_CONFIG: Record<string, { label: string; badge: string }> = {
   HALF_DAY:       { label: "Half Day Off",         badge: "bg-orange-100 text-orange-700" },
   WORK_FROM_HOME: { label: "Work From Home",       badge: "bg-teal-100 text-teal-700" },
   PUBLIC_HOLIDAY: { label: "Public Holiday - Paid", badge: "bg-indigo-100 text-indigo-700" },
+  HOLIDAY_EVE:    { label: "Holiday Eve",          badge: "bg-indigo-100 text-indigo-700" },
+  HOLIDAY_EVE_VACATION: { label: "Holiday Eve + Vacation", badge: "bg-indigo-100 text-indigo-700" },
+  HOLIDAY_EVE_SICK:     { label: "Holiday Eve + Sick",     badge: "bg-indigo-100 text-indigo-700" },
   DAY_OFF:        { label: "Day Off",              badge: "bg-gray-100 text-gray-600" },
 };
 

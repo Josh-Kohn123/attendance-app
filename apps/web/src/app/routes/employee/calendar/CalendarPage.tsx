@@ -20,14 +20,20 @@ import { getReportingPeriod } from "@orbs/shared";
 
 // ─── Types & Constants ──────────────────────────────────────────────────────
 
-type DayStatus = "PRESENT" | "SICK" | "CHILD_SICK" | "VACATION" | "RESERVES" | "HALF_DAY" | "WORK_FROM_HOME" | "PUBLIC_HOLIDAY" | "PUBLIC_HOLIDAY_HALF" | "HOLIDAY_EVE" | "CHOICE_DAY" | "ADVANCED_STUDY" | "DAY_OFF";
+type DayStatus = "PRESENT" | "SICK" | "CHILD_SICK" | "VACATION" | "RESERVES" | "HALF_DAY" | "WORK_FROM_HOME" | "PUBLIC_HOLIDAY" | "PUBLIC_HOLIDAY_HALF" | "HOLIDAY_EVE" | "HOLIDAY_EVE_VACATION" | "HOLIDAY_EVE_SICK" | "CHOICE_DAY" | "ADVANCED_STUDY" | "DAY_OFF";
 type ReportStatus = "DRAFT" | "SUBMITTED" | "APPROVED" | "REJECTED";
 
 // Statuses that the employee can manually pick
 const PICKABLE_STATUSES: DayStatus[] = ["PRESENT", "SICK", "CHILD_SICK", "VACATION", "RESERVES", "HALF_DAY", "WORK_FROM_HOME", "CHOICE_DAY", "ADVANCED_STUDY"];
 
+// Statuses shown only on Holiday Eve days (employee takes remaining half off)
+const HOLIDAY_EVE_STATUSES: DayStatus[] = ["HOLIDAY_EVE_VACATION", "HOLIDAY_EVE_SICK"];
+
 // Auto-filled statuses that cannot be changed by employees
-const AUTO_STATUSES: DayStatus[] = ["PUBLIC_HOLIDAY", "PUBLIC_HOLIDAY_HALF", "HOLIDAY_EVE", "DAY_OFF"];
+const AUTO_STATUSES: DayStatus[] = ["PUBLIC_HOLIDAY", "PUBLIC_HOLIDAY_HALF", "DAY_OFF"];
+
+// Statuses that are auto-filled but allow override (holiday eve → employee can take half day off)
+const OVERRIDABLE_AUTO_STATUSES: DayStatus[] = ["HOLIDAY_EVE", "HOLIDAY_EVE_VACATION", "HOLIDAY_EVE_SICK"];
 
 const STATUS_CONFIG: Record<
   DayStatus,
@@ -43,6 +49,8 @@ const STATUS_CONFIG: Record<
   PUBLIC_HOLIDAY: { label: "Holiday - Paid",       bg: "bg-indigo-100", text: "text-indigo-800", dot: "bg-indigo-500", border: "border-indigo-300" },
   PUBLIC_HOLIDAY_HALF: { label: "Holiday (Half)",   bg: "bg-indigo-50",  text: "text-indigo-700", dot: "bg-indigo-400", border: "border-indigo-200" },
   HOLIDAY_EVE:    { label: "Holiday Eve",          bg: "bg-indigo-50",  text: "text-indigo-700", dot: "bg-indigo-400", border: "border-indigo-200" },
+  HOLIDAY_EVE_VACATION: { label: "Holiday Eve + Vacation", bg: "bg-indigo-100", text: "text-indigo-800", dot: "bg-sky-500",    border: "border-indigo-300" },
+  HOLIDAY_EVE_SICK:     { label: "Holiday Eve + Sick",     bg: "bg-indigo-100", text: "text-indigo-800", dot: "bg-amber-500",  border: "border-indigo-300" },
   CHOICE_DAY:     { label: "Choice Day",           bg: "bg-cyan-100",   text: "text-cyan-800",   dot: "bg-cyan-500",   border: "border-cyan-300"   },
   ADVANCED_STUDY: { label: "Study",                bg: "bg-lime-100",   text: "text-lime-800",   dot: "bg-lime-500",   border: "border-lime-300"   },
   DAY_OFF:        { label: "Day Off",              bg: "bg-gray-100",   text: "text-gray-600",   dot: "bg-gray-400",   border: "border-gray-300"   },
@@ -62,22 +70,27 @@ function StatusPicker({
   onClear,
   onClose,
   current,
+  isHolidayEve,
 }: {
   onSelect: (status: DayStatus) => void;
   onClear: () => void;
   onClose: () => void;
   current?: DayStatus;
+  isHolidayEve?: boolean;
 }) {
+  const statuses = isHolidayEve ? HOLIDAY_EVE_STATUSES : PICKABLE_STATUSES;
   return (
     <div className="absolute z-50 mt-2 w-44 rounded-xl bg-white shadow-lg ring-1 ring-gray-200">
       <div className="flex items-center justify-between border-b border-gray-100 px-3 py-2">
-        <span className="text-xs font-semibold text-gray-500 uppercase tracking-wide">Set status</span>
+        <span className="text-xs font-semibold text-gray-500 uppercase tracking-wide">
+          {isHolidayEve ? "Holiday Eve — take half day?" : "Set status"}
+        </span>
         <button onClick={onClose} className="rounded p-0.5 hover:bg-gray-100">
           <X size={14} className="text-gray-400" />
         </button>
       </div>
       <div className="p-1">
-        {PICKABLE_STATUSES.map((key) => {
+        {statuses.map((key) => {
           const cfg = STATUS_CONFIG[key];
           return (
             <button
@@ -93,7 +106,7 @@ function StatusPicker({
             </button>
           );
         })}
-        {current && !AUTO_STATUSES.includes(current) && (
+        {current && !AUTO_STATUSES.includes(current) && !OVERRIDABLE_AUTO_STATUSES.includes(current) && (
           <>
             <div className="my-1 border-t border-gray-100" />
             <button
@@ -102,6 +115,18 @@ function StatusPicker({
             >
               <X size={14} />
               Clear status
+            </button>
+          </>
+        )}
+        {isHolidayEve && current && OVERRIDABLE_AUTO_STATUSES.includes(current) && current !== "HOLIDAY_EVE" && (
+          <>
+            <div className="my-1 border-t border-gray-100" />
+            <button
+              onClick={onClear}
+              className="flex w-full items-center gap-2 rounded-lg px-3 py-2 text-sm text-red-500 hover:bg-red-50"
+            >
+              <X size={14} />
+              Revert to Holiday Eve
             </button>
           </>
         )}
@@ -410,11 +435,11 @@ export function CalendarPage() {
     return map;
   }, [attendance, holidayDates, employeeDaysOff, from, to]);
 
-  // ── Auto-filled dates (non-editable) ──
+  // ── Auto-filled dates (non-editable) — holiday eves are excluded so employees can override ──
   const autoFilledDates = useMemo(() => {
     const set = new Set<string>();
     for (const [dateStr, status] of statusByDate) {
-      if (AUTO_STATUSES.includes(status)) {
+      if (AUTO_STATUSES.includes(status) && !OVERRIDABLE_AUTO_STATUSES.includes(status)) {
         set.add(dateStr);
       }
     }
@@ -713,10 +738,11 @@ export function CalendarPage() {
                   )}
                 </button>
 
-                {isPickerOpen && !multiSelectMode && isEditable && !isAutoFilled && (
+                {isPickerOpen && !multiSelectMode && isEditable && (!isAutoFilled || (status && OVERRIDABLE_AUTO_STATUSES.includes(status))) && (
                   <div className="absolute left-1/2 top-full z-50 -translate-x-1/2">
                     <StatusPicker
                       current={status}
+                      isHolidayEve={!!(status && OVERRIDABLE_AUTO_STATUSES.includes(status))}
                       onSelect={(s) => setEntry.mutate({ date: dateStr, status: s })}
                       onClear={() => clearEntry.mutate(dateStr)}
                       onClose={() => setOpenPickerDate(null)}

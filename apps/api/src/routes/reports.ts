@@ -22,6 +22,8 @@ const STATUS_EVENT_LABEL: Record<string, string> = {
   WORK_FROM_HOME: "Work From Home",
   PUBLIC_HOLIDAY: "Public Holiday - Paid",
   HOLIDAY_EVE: "Eve of Public Holiday - Half Day off - Paid",
+  HOLIDAY_EVE_VACATION: "Holiday Eve + Vacation (Half Day)",
+  HOLIDAY_EVE_SICK: "Holiday Eve + Sick (Half Day)",
   CHOICE_DAY: "Choice Day (יום בחירה)",
   ADVANCED_STUDY: "Advanced Study",
   DAY_OFF: "Day Off",
@@ -109,6 +111,7 @@ export async function reportRoutes(app: FastifyInstance) {
         else if (status === "VACATION") existing.vacation += 1;
         else if (status === "RESERVES") existing.reserves += 1;
         else if (status === "HALF_DAY") existing.halfDay += 1;
+        else if (status === "HOLIDAY_EVE_VACATION" || status === "HOLIDAY_EVE_SICK") { existing.holidayEve += 1; existing.halfDay += 0.5; }
         else if (status === "WORK_FROM_HOME") existing.workFromHome += 1;
         else if (status === "PUBLIC_HOLIDAY") existing.publicHoliday += 1;
         else if (status === "HOLIDAY_EVE") existing.holidayEve += 1;
@@ -248,6 +251,7 @@ export async function reportRoutes(app: FastifyInstance) {
         else if (status === "VACATION") c.vacation += 1;
         else if (status === "RESERVES") c.reserves += 1;
         else if (status === "HALF_DAY") c.halfDay += 1;
+        else if (status === "HOLIDAY_EVE_VACATION" || status === "HOLIDAY_EVE_SICK") { c.holidayEve += 1; c.halfDay += 0.5; }
         else if (status === "WORK_FROM_HOME") c.workFromHome += 1;
         else if (status === "PUBLIC_HOLIDAY") c.publicHoliday += 1;
         else if (status === "HOLIDAY_EVE") c.holidayEve += 1;
@@ -377,17 +381,18 @@ export async function reportRoutes(app: FastifyInstance) {
           totalHalfDay += c.halfDay;
           totalSick += c.sick;
 
+          const fmtCount = (n: number) => n > 0 ? (Number.isInteger(n) ? n + ".0" : String(n)) : "";
           ws2.addRow([
             `${emp.lastName} ${emp.firstName}`,
             (emp as any).employeeNumber ?? "",
             attendanceDays,
-            c.vacation > 0 ? String(c.vacation) + ".0" : "",
-            c.reserves > 0 ? String(c.reserves) + ".0" : "",
-            c.childSick > 0 ? String(c.childSick) + ".0" : "",
-            c.choiceDay > 0 ? String(c.choiceDay) + ".0" : "",
-            c.advancedStudy > 0 ? String(c.advancedStudy) + ".0" : "",
-            c.halfDay > 0 ? String(c.halfDay) + ".0" : "",
-            c.sick > 0 ? String(c.sick) + ".0" : "",
+            fmtCount(c.vacation),
+            fmtCount(c.reserves),
+            fmtCount(c.childSick),
+            fmtCount(c.choiceDay),
+            fmtCount(c.advancedStudy),
+            fmtCount(c.halfDay),
+            fmtCount(c.sick),
           ]);
         }
 

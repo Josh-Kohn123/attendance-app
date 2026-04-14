@@ -55,6 +55,8 @@ const STATUS_OPTIONS = [
   { value: "VACATION", label: "Vacation" },
   { value: "RESERVES", label: "Reserves (Miluim)" },
   { value: "HALF_DAY", label: "Half Day Off" },
+  { value: "HOLIDAY_EVE_VACATION", label: "Holiday Eve + Vacation" },
+  { value: "HOLIDAY_EVE_SICK", label: "Holiday Eve + Sick" },
   { value: "PRESENT", label: "Present" },
   { value: "WORK_FROM_HOME", label: "Work From Home" },
   { value: "PUBLIC_HOLIDAY", label: "Public Holiday - Paid" },
