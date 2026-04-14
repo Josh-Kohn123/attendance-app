@@ -102,7 +102,7 @@ export async function sendPresenceConfirmationEmail(
             </a>
           </p>
           <p style="color:#6b7280;font-size:13px;line-height:1.5;margin-top:24px;">
-            If you were present, please mark yourself as "Present" in the calendar.
+            If you were present, please mark yourself as "In Office" in the calendar.
             If you were absent, please select the appropriate absence type (Sick, Vacation, etc.).
           </p>
         </td></tr>

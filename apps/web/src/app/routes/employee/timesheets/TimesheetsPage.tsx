@@ -5,7 +5,7 @@ import dayjs from "dayjs";
 
 // Status display config — mirrors CalendarPage / AttendanceEvent.notes values
 const STATUS_CONFIG: Record<string, { label: string; badge: string }> = {
-  PRESENT:        { label: "Present",              badge: "bg-green-100 text-green-700" },
+  PRESENT:        { label: "In Office",              badge: "bg-green-100 text-green-700" },
   SICK:           { label: "Sick Leave",           badge: "bg-amber-100 text-amber-700" },
   CHILD_SICK:     { label: "Child Sick",           badge: "bg-rose-100 text-rose-700" },
   VACATION:       { label: "Vacation",             badge: "bg-blue-100 text-blue-700" },

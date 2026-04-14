@@ -334,7 +334,7 @@ async function sendDigestEmail(
     HALF_DAY: "Half Day Off",
     HOLIDAY_EVE_VACATION: "Holiday Eve + Vacation",
     HOLIDAY_EVE_SICK: "Holiday Eve + Sick",
-    PRESENT: "Present",
+    PRESENT: "In Office",
     WORK_FROM_HOME: "Work From Home",
     CHILD_SICK: "Child Sick",
     PUBLIC_HOLIDAY: "Public Holiday - Paid",

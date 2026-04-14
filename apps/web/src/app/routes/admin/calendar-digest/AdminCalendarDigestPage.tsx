@@ -57,7 +57,7 @@ const STATUS_OPTIONS = [
   { value: "HALF_DAY", label: "Half Day Off" },
   { value: "HOLIDAY_EVE_VACATION", label: "Holiday Eve + Vacation" },
   { value: "HOLIDAY_EVE_SICK", label: "Holiday Eve + Sick" },
-  { value: "PRESENT", label: "Present" },
+  { value: "PRESENT", label: "In Office" },
   { value: "WORK_FROM_HOME", label: "Work From Home" },
   { value: "PUBLIC_HOLIDAY", label: "Public Holiday - Paid" },
   { value: "DAY_OFF", label: "Day Off" },

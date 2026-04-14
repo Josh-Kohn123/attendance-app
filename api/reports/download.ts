@@ -11,7 +11,7 @@ const HEBREW_DAYS = ["יום א", "יום ב", "יום ג", "יום ד", "יום
 
 // Status label mapping for the Event column
 const STATUS_EVENT_LABEL: Record<string, string> = {
-  PRESENT: "Present",
+  PRESENT: "In Office",
   SICK: "Sick",
   CHILD_SICK: "Child Sick",
   VACATION: "Vacation",

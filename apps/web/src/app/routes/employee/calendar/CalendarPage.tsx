@@ -39,7 +39,7 @@ const STATUS_CONFIG: Record<
   DayStatus,
   { label: string; bg: string; text: string; dot: string; border: string }
 > = {
-  PRESENT:        { label: "Present",              bg: "bg-green-100",  text: "text-green-800",  dot: "bg-green-500",  border: "border-green-300"  },
+  PRESENT:        { label: "In Office",              bg: "bg-green-100",  text: "text-green-800",  dot: "bg-green-500",  border: "border-green-300"  },
   SICK:           { label: "Sick",                 bg: "bg-amber-100",  text: "text-amber-800",  dot: "bg-amber-500",  border: "border-amber-300"  },
   CHILD_SICK:     { label: "Child Sick",           bg: "bg-rose-100",   text: "text-rose-800",   dot: "bg-rose-500",   border: "border-rose-300"   },
   VACATION:       { label: "Vacation",             bg: "bg-sky-100",    text: "text-sky-800",    dot: "bg-sky-500",    border: "border-sky-300"    },
