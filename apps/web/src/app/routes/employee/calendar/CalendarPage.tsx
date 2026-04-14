@@ -400,9 +400,9 @@ export function CalendarPage() {
   const statusByDate = useMemo(() => {
     const map = new Map<string, DayStatus>();
 
-    // First, fill in holidays (full or half day)
+    // First, fill in holidays (full-day or holiday eve)
     for (const [dateStr, info] of holidayDates) {
-      map.set(dateStr, info.halfDay ? "PUBLIC_HOLIDAY_HALF" : "PUBLIC_HOLIDAY");
+      map.set(dateStr, info.halfDay ? "HOLIDAY_EVE" : "PUBLIC_HOLIDAY");
     }
 
     // Then, fill in employee days off
