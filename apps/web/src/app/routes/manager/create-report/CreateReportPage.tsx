@@ -410,7 +410,7 @@ export function CreateReportPage() {
   });
 
   // ── Fetch holidays for the period ──
-  const { data: holidays } = useQuery<{ date: string; name: string }[]>({
+  const { data: holidays } = useQuery<{ date: string; name: string; halfDay?: boolean }[]>({
     queryKey: ["holidays-dates", from, to],
     queryFn: () => api.get(`/admin/holidays/dates?from=${from}&to=${to}`),
   });
@@ -449,7 +449,13 @@ export function CreateReportPage() {
   }, [to]);
 
   // Build set of holiday dates and employee days off dates
-  const holidayDates = useMemo(() => new Set((holidays ?? []).map((h) => h.date)), [holidays]);
+  const holidayDates = useMemo(() => {
+    const map = new Map<string, { name: string; halfDay: boolean }>();
+    for (const h of holidays ?? []) {
+      map.set(h.date, { name: h.name, halfDay: !!h.halfDay });
+    }
+    return map;
+  }, [holidays]);
 
   const WEEKDAY_MAP: Record<string, number> = { SUNDAY: 0, MONDAY: 1, TUESDAY: 2, WEDNESDAY: 3, THURSDAY: 4 };
   const daysOffSet = useMemo(() => {
@@ -460,8 +466,10 @@ export function CreateReportPage() {
   // Set of auto-filled dates (non-editable)
   const autoFilledDates = useMemo(() => {
     const set = new Set<string>();
-    // Add holiday dates
-    for (const d of holidayDates) set.add(d);
+    // Add full-day holidays (exclude half-day / holiday eves — those are editable)
+    for (const [d, info] of holidayDates) {
+      if (!info.halfDay) set.add(d);
+    }
     // Add employee days off for all workdays in the period
     let cursor = dayjs(from);
     const end = dayjs(to);
@@ -476,7 +484,7 @@ export function CreateReportPage() {
   const statusByDate = useMemo(() => {
     const map = new Map<string, DayStatus>();
     // First, auto-fill holidays and days off
-    for (const d of holidayDates) map.set(d, "PUBLIC_HOLIDAY");
+    for (const [d, info] of holidayDates) map.set(d, info.halfDay ? "HOLIDAY_EVE" : "PUBLIC_HOLIDAY");
     let cursor = dayjs(from);
     const end = dayjs(to);
     while (!cursor.isAfter(end)) {
