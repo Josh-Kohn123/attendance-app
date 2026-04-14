@@ -21,5 +21,11 @@
     "api/**/*.ts": {
       "maxDuration": 60
     }
-  }
+  },
+  "crons": [
+    {
+      "path": "/api/cron/monthly-reminder",
+      "schedule": "0 6 * * *"
+    }
+  ]
 }

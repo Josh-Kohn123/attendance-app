@@ -409,6 +409,40 @@ export const email = {
     });
   },
 
+  /** Send monthly report submission reminder to employee */
+  async sendMonthlyReminder(data: {
+    orgId: string;
+    employeeEmail: string;
+    employeeName: string;
+    periodLabel: string;
+    month: number;
+    year: number;
+  }) {
+    return sendEmail({
+      to: data.employeeEmail,
+      subject: `[Attendance] Time to submit your attendance report`,
+      html: wrapTemplate(
+        "Monthly Attendance Reminder",
+        `
+        <p style="color:#374151;line-height:1.6;">
+          Hi ${data.employeeName.split(" ")[0]},
+        </p>
+        <p style="color:#374151;line-height:1.6;">
+          It's time to review and submit your attendance report for <strong>${data.periodLabel}</strong>.
+        </p>
+        <p style="color:#374151;line-height:1.6;">
+          Please check that all your days are filled in correctly, then submit for approval.
+        </p>
+        <p style="margin-top:24px;">
+          <a href="${process.env.CORS_ORIGIN}/calendar?month=${data.month}&year=${data.year}"
+             style="display:inline-block;background-color:#2563eb;color:#ffffff;padding:10px 24px;border-radius:8px;text-decoration:none;font-weight:500;">
+            Review &amp; Submit
+          </a>
+        </p>`
+      ),
+    });
+  },
+
   /** Send manager summary email with employee attendance data */
   async sendManagerSummary(data: {
     managerEmail: string;
