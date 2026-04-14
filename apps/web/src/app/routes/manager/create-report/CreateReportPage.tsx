@@ -50,6 +50,12 @@ const DEFAULT_SITE_ID = "00000000-0000-0000-0000-000000000010";
 // Statuses the user can manually pick (excludes auto-filled ones)
 const PICKABLE_STATUSES: DayStatus[] = ["PRESENT", "SICK", "CHILD_SICK", "VACATION", "RESERVES", "HALF_DAY", "WORK_FROM_HOME", "CHOICE_DAY", "ADVANCED_STUDY", "HOLIDAY_EVE_VACATION", "HOLIDAY_EVE_SICK"];
 
+// Auto-filled statuses that cannot be changed
+const AUTO_STATUSES: DayStatus[] = ["PUBLIC_HOLIDAY", "DAY_OFF"];
+
+// Auto-filled but overridable (holiday eve → employee/admin can pick variant)
+const OVERRIDABLE_AUTO_STATUSES: DayStatus[] = ["HOLIDAY_EVE", "HOLIDAY_EVE_VACATION", "HOLIDAY_EVE_SICK"];
+
 // ─── Status Picker Popup ─────────────────────────────────────────────────────
 
 function StatusPicker({
@@ -463,27 +469,10 @@ export function CreateReportPage() {
     return new Set(empDaysOff.map((d) => WEEKDAY_MAP[d]).filter((n) => n !== undefined));
   }, [employeeDetails]);
 
-  // Set of auto-filled dates (non-editable)
-  const autoFilledDates = useMemo(() => {
-    const set = new Set<string>();
-    // Add full-day holidays (exclude half-day / holiday eves — those are editable)
-    for (const [d, info] of holidayDates) {
-      if (!info.halfDay) set.add(d);
-    }
-    // Add employee days off for all workdays in the period
-    let cursor = dayjs(from);
-    const end = dayjs(to);
-    while (!cursor.isAfter(end)) {
-      if (daysOffSet.has(cursor.day())) set.add(cursor.format("YYYY-MM-DD"));
-      cursor = cursor.add(1, "day");
-    }
-    return set;
-  }, [holidayDates, daysOffSet, from, to]);
-
   // ── Map date → status ──
   const statusByDate = useMemo(() => {
     const map = new Map<string, DayStatus>();
-    // First, auto-fill holidays and days off
+    // First, auto-fill holidays (full-day or holiday eve) and days off
     for (const [d, info] of holidayDates) map.set(d, info.halfDay ? "HOLIDAY_EVE" : "PUBLIC_HOLIDAY");
     let cursor = dayjs(from);
     const end = dayjs(to);
@@ -494,17 +483,31 @@ export function CreateReportPage() {
       }
       cursor = cursor.add(1, "day");
     }
-    // Then overlay attendance data (attendance takes precedence for non-auto-filled)
+    // Overlay attendance data — don't override locked auto-filled statuses
     if (attendance?.items) {
       for (const event of attendance.items) {
         const dateStr = dayjs(event.serverTimestamp).format("YYYY-MM-DD");
-        if (!autoFilledDates.has(dateStr) && event.notes && (event.notes as string) in STATUS_CONFIG) {
-          map.set(dateStr, event.notes as DayStatus);
+        if (event.notes && (event.notes as string) in STATUS_CONFIG) {
+          const existing = map.get(dateStr);
+          if (!existing || !AUTO_STATUSES.includes(existing)) {
+            map.set(dateStr, event.notes as DayStatus);
+          }
         }
       }
     }
     return map;
-  }, [attendance, holidayDates, daysOffSet, autoFilledDates, from, to]);
+  }, [attendance, holidayDates, daysOffSet, from, to]);
+
+  // Set of auto-filled dates (non-editable) — derived from statusByDate
+  const autoFilledDates = useMemo(() => {
+    const set = new Set<string>();
+    for (const [dateStr, status] of statusByDate) {
+      if (AUTO_STATUSES.includes(status) && !OVERRIDABLE_AUTO_STATUSES.includes(status)) {
+        set.add(dateStr);
+      }
+    }
+    return set;
+  }, [statusByDate]);
 
   // ── Single-day mutation (proxy) ──
   const setEntry = useMutation({
