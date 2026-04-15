@@ -118,10 +118,10 @@ export default withAuth(
 
       console.log("[CalendarDigest/apply] Received", entries.length, "entries,", additionalEntries.length, "additional");
 
-      const systemUserId = process.env.SYSTEM_USER_ID;
-      if (!systemUserId) {
-        return res.status(500).json({ ok: false, error: { code: "CONFIG_ERROR", message: "SYSTEM_USER_ID not configured" } });
-      }
+      // Use the authenticated admin's userId as the creator — they're the one
+      // making the decision, and this avoids needing a separate SYSTEM_USER_ID
+      // that must exist in the users table.
+      const creatorUserId = ctx.userId;
 
       // Get admin email for mismatch notifications
       const adminUser = await prisma.user.findUnique({
@@ -146,7 +146,7 @@ export default withAuth(
         const workdays = getWorkdaysInRange(entry.startDate, entry.endDate);
         const changes: Array<{ date: string; previousStatus: string | null; newStatus: string }> = [];
         for (const date of workdays) {
-          const { previousStatus } = await applyAttendanceForced(ctx.orgId, employee, date, entry.status, systemUserId);
+          const { previousStatus } = await applyAttendanceForced(ctx.orgId, employee, date, entry.status, creatorUserId);
           changes.push({ date, previousStatus, newStatus: entry.status });
         }
 
