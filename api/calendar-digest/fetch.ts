@@ -22,7 +22,15 @@ export default withAuth(
     }
 
     // Fetch live events from Google Calendar
-    const events = await fetchEventsInRange(calendarId, from, to, org.timezone);
+    const allEvents = await fetchEventsInRange(calendarId, from, to, org.timezone);
+
+    // Filter out always-ignored event titles
+    const ignoredTitles = await prisma.ignoredCalendarEvent.findMany({
+      where: { orgId: org.id },
+      select: { eventTitle: true },
+    });
+    const ignoredSet = new Set(ignoredTitles.map((i) => i.eventTitle.toLowerCase()));
+    const events = allEvents.filter((e) => !ignoredSet.has(e.title.toLowerCase()));
 
     // Fetch all employees for matching
     const employees = await prisma.employee.findMany({

@@ -148,8 +148,19 @@ async function processOrgDigest(
 
   // Fetch all calendar events for today
   console.log(`[CalendarDigest] Fetching events for ${today} (tz: ${org.timezone}, calendar: ${calendarId})`);
-  const events = await fetchDayEvents(calendarId, today, org.timezone);
-  console.log(`[CalendarDigest] Found ${events.length} events for ${today}`);
+  const allEvents = await fetchDayEvents(calendarId, today, org.timezone);
+  console.log(`[CalendarDigest] Found ${allEvents.length} events for ${today}`);
+
+  // Filter out always-ignored event titles
+  const ignoredTitles = await prisma.ignoredCalendarEvent.findMany({
+    where: { orgId: org.id },
+    select: { eventTitle: true },
+  });
+  const ignoredSet = new Set(ignoredTitles.map((i) => i.eventTitle.toLowerCase()));
+  const events = allEvents.filter((e) => !ignoredSet.has(e.title.toLowerCase()));
+  if (events.length < allEvents.length) {
+    console.log(`[CalendarDigest] Filtered out ${allEvents.length - events.length} always-ignored events`);
+  }
 
   if (events.length === 0) {
     // Create an empty digest record so we know the job ran (idempotency)

@@ -1,9 +1,13 @@
 /**
  * Admin Calendar Digest Page
  *
- * Replaces the daily email digest. Fetches live Google Calendar events
- * for the current reporting period, matches them to employees, and lets
- * the admin confirm/ignore each entry before applying to attendance records.
+ * Fetches live Google Calendar events for the current reporting period,
+ * matches them to employees, and lets the admin confirm/ignore each entry
+ * before applying to attendance records.
+ *
+ * MATCHED entries are auto-confirmed (collapsed by default).
+ * Ambiguous entries require manual review.
+ * "Always Ignore" registers an event title to be permanently filtered out.
  */
 
 import { useState } from "react";
@@ -45,6 +49,12 @@ interface LocalDecision {
   status?: string;
   startDate: string;
   endDate: string;
+}
+
+interface IgnoredTitle {
+  id: string;
+  eventTitle: string;
+  createdAt: string;
 }
 
 // ─── Status options ──────────────────────────────────────────────────
@@ -94,9 +104,10 @@ interface EntryRowProps {
   employees: DigestEmployee[];
   decision: LocalDecision;
   onChange: (updated: LocalDecision) => void;
+  onAlwaysIgnore: (eventTitle: string) => void;
 }
 
-function EntryRow({ entry, employees, decision, onChange }: EntryRowProps) {
+function EntryRow({ entry, employees, decision, onChange, onAlwaysIgnore }: EntryRowProps) {
   const isLocked = entry.hasExistingEntry || entry.matchType === "INACTIVE_EMPLOYEE";
   const isCreating = decision.decision === "CONFIRMED";
   const isIgnored = decision.decision === "DECLINED";
@@ -215,6 +226,13 @@ function EntryRow({ entry, employees, decision, onChange }: EntryRowProps) {
             >
               Ignore
             </button>
+            <button
+              onClick={() => onAlwaysIgnore(entry.eventTitle)}
+              className="rounded-lg px-3 py-1.5 text-sm font-medium transition-colors border border-red-300 text-red-600 hover:bg-red-50"
+              title="Permanently ignore events with this title"
+            >
+              Always Ignore
+            </button>
           </div>
         )}
       </div>
@@ -290,6 +308,47 @@ function AddEntryForm({
   );
 }
 
+// ─── Ignored Titles Management ───────────────────────────────────────
+
+function IgnoredTitlesSection({
+  ignoredTitles,
+  onRemove,
+}: {
+  ignoredTitles: IgnoredTitle[];
+  onRemove: (title: string) => void;
+}) {
+  const [expanded, setExpanded] = useState(false);
+
+  if (ignoredTitles.length === 0) return null;
+
+  return (
+    <div className="rounded-lg border bg-white p-4">
+      <button
+        onClick={() => setExpanded((v) => !v)}
+        className="flex items-center gap-2 text-sm font-medium text-gray-700 w-full text-left"
+      >
+        <span className={`transition-transform ${expanded ? "rotate-90" : ""}`}>&#9654;</span>
+        Always-ignored titles ({ignoredTitles.length})
+      </button>
+      {expanded && (
+        <div className="mt-3 space-y-1.5">
+          {ignoredTitles.map((item) => (
+            <div key={item.id} className="flex items-center justify-between rounded border px-3 py-1.5 text-sm bg-gray-50">
+              <span className="text-gray-700 truncate">{item.eventTitle}</span>
+              <button
+                onClick={() => onRemove(item.eventTitle)}
+                className="text-gray-400 hover:text-red-500 ml-3 shrink-0"
+              >
+                X
+              </button>
+            </div>
+          ))}
+        </div>
+      )}
+    </div>
+  );
+}
+
 // ─── Main page ───────────────────────────────────────────────────────
 
 export function AdminCalendarDigestPage() {
@@ -324,13 +383,34 @@ export function AdminCalendarDigestPage() {
   const [decisions, setDecisions] = useState<Record<string, LocalDecision>>({});
   const [additionalEntries, setAdditionalEntries] = useState<Array<{ employeeId: string; status: string; startDate: string; endDate: string; _key: number }>>([]);
   const [nextKey, setNextKey] = useState(0);
+  const [showAutoConfirmed, setShowAutoConfirmed] = useState(false);
+
+  // Fetch ignored titles
+  const { data: ignoredTitles = [] } = useQuery<IgnoredTitle[]>({
+    queryKey: ["ignored-calendar-titles"],
+    queryFn: () => api.get("/calendar-digest/always-ignore"),
+  });
 
   // Fetch events mutation
   const fetchMutation = useMutation({
     mutationFn: () => api.get<FetchResult>(`/calendar-digest/fetch?from=${fromDate}&to=${toDate}`),
     onSuccess: (data) => {
       setFetchResult(data);
-      setDecisions({});
+      // Auto-confirm MATCHED entries, leave the rest PENDING
+      const autoDecisions: Record<string, LocalDecision> = {};
+      for (const entry of data.entries) {
+        if (entry.matchType === "MATCHED" && !entry.hasExistingEntry) {
+          autoDecisions[entry.eventId] = {
+            eventId: entry.eventId,
+            decision: "CONFIRMED",
+            employeeId: entry.proposedEmployeeId ?? undefined,
+            status: entry.proposedStatus ?? undefined,
+            startDate: entry.startDate,
+            endDate: entry.endDate,
+          };
+        }
+      }
+      setDecisions(autoDecisions);
       setAdditionalEntries([]);
     },
   });
@@ -360,10 +440,49 @@ export function AdminCalendarDigestPage() {
       });
     },
     onSuccess: () => {
-      // Refetch to update hasExistingEntry flags
       fetchMutation.mutate();
     },
   });
+
+  // Always-ignore mutations
+  const alwaysIgnoreMutation = useMutation({
+    mutationFn: (eventTitle: string) => api.post("/calendar-digest/always-ignore", { eventTitle }),
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ["ignored-calendar-titles"] });
+    },
+  });
+
+  const removeIgnoredMutation = useMutation({
+    mutationFn: (eventTitle: string) =>
+      api.delete(`/calendar-digest/always-ignore?eventTitle=${encodeURIComponent(eventTitle)}`),
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ["ignored-calendar-titles"] });
+    },
+  });
+
+  const handleAlwaysIgnore = (eventTitle: string) => {
+    alwaysIgnoreMutation.mutate(eventTitle);
+    // Also set local decision to DECLINED and remove the entry from view
+    if (fetchResult) {
+      const entry = fetchResult.entries.find((e) => e.eventTitle === eventTitle);
+      if (entry) {
+        setDecisions((prev) => ({
+          ...prev,
+          [entry.eventId]: {
+            eventId: entry.eventId,
+            decision: "DECLINED",
+            startDate: entry.startDate,
+            endDate: entry.endDate,
+          },
+        }));
+      }
+      // Remove from fetch result so it disappears immediately
+      setFetchResult({
+        ...fetchResult,
+        entries: fetchResult.entries.filter((e) => e.eventTitle !== eventTitle),
+      });
+    }
+  };
 
   const getDecision = (entry: DigestEntry): LocalDecision => {
     if (decisions[entry.eventId]) return decisions[entry.eventId];
@@ -381,20 +500,32 @@ export function AdminCalendarDigestPage() {
     setDecisions((prev) => ({ ...prev, [updated.eventId]: updated }));
   };
 
-  const actionableEntries = fetchResult?.entries.filter(
+  // Separate entries into auto-confirmed vs needs-review
+  const allActionable = fetchResult?.entries.filter(
     (e) => !e.hasExistingEntry && e.matchType !== "INACTIVE_EMPLOYEE",
   ) ?? [];
-  const pendingCount = actionableEntries.filter((e) => getDecision(e).decision === "PENDING").length;
-  const confirmedCount = actionableEntries.filter((e) => getDecision(e).decision === "CONFIRMED").length + additionalEntries.length;
 
-  // Group entries by date
-  const entriesByDate = new Map<string, DigestEntry[]>();
-  for (const entry of fetchResult?.entries ?? []) {
+  const autoConfirmedEntries = allActionable.filter(
+    (e) => e.matchType === "MATCHED",
+  );
+  const needsReviewEntries = allActionable.filter(
+    (e) => e.matchType !== "MATCHED",
+  );
+  const lockedEntries = fetchResult?.entries.filter(
+    (e) => e.hasExistingEntry || e.matchType === "INACTIVE_EMPLOYEE",
+  ) ?? [];
+
+  const pendingCount = needsReviewEntries.filter((e) => getDecision(e).decision === "PENDING").length;
+  const confirmedCount = allActionable.filter((e) => getDecision(e).decision === "CONFIRMED").length + additionalEntries.length;
+
+  // Group needs-review entries by date
+  const reviewByDate = new Map<string, DigestEntry[]>();
+  for (const entry of needsReviewEntries) {
     const key = entry.startDate;
-    if (!entriesByDate.has(key)) entriesByDate.set(key, []);
-    entriesByDate.get(key)!.push(entry);
+    if (!reviewByDate.has(key)) reviewByDate.set(key, []);
+    reviewByDate.get(key)!.push(entry);
   }
-  const sortedDates = Array.from(entriesByDate.keys()).sort();
+  const sortedReviewDates = Array.from(reviewByDate.keys()).sort();
 
   return (
     <div className="mx-auto max-w-3xl">
@@ -440,6 +571,11 @@ export function AdminCalendarDigestPage() {
           <div className="flex items-center justify-between mb-4">
             <p className="text-sm text-gray-600">
               {fetchResult.entries.length} event{fetchResult.entries.length === 1 ? "" : "s"} found
+              {autoConfirmedEntries.length > 0 && (
+                <span className="text-green-600 ml-1">
+                  ({autoConfirmedEntries.length} auto-confirmed)
+                </span>
+              )}
             </p>
             <button
               onClick={() => fetchMutation.mutate()}
@@ -456,27 +592,85 @@ export function AdminCalendarDigestPage() {
             </div>
           ) : (
             <>
-              {/* Entries grouped by date */}
-              <div className="space-y-6 mb-6">
-                {sortedDates.map((date) => (
-                  <div key={date}>
-                    <h3 className="text-sm font-semibold text-gray-700 mb-2 border-b pb-1">
-                      {dayjs(date).format("ddd, MMM D, YYYY")}
-                    </h3>
+              {/* Needs Review section */}
+              {needsReviewEntries.length > 0 && (
+                <div className="mb-6">
+                  <h2 className="text-sm font-semibold text-amber-700 mb-3 flex items-center gap-2">
+                    <span className="inline-block w-2 h-2 rounded-full bg-amber-500" />
+                    Needs review ({needsReviewEntries.length})
+                  </h2>
+                  <div className="space-y-6">
+                    {sortedReviewDates.map((date) => (
+                      <div key={date}>
+                        <h3 className="text-sm font-semibold text-gray-700 mb-2 border-b pb-1">
+                          {dayjs(date).format("ddd, MMM D, YYYY")}
+                        </h3>
+                        <div className="space-y-2">
+                          {reviewByDate.get(date)!.map((entry) => (
+                            <EntryRow
+                              key={entry.eventId}
+                              entry={entry}
+                              employees={fetchResult.employees}
+                              decision={getDecision(entry)}
+                              onChange={updateDecision}
+                              onAlwaysIgnore={handleAlwaysIgnore}
+                            />
+                          ))}
+                        </div>
+                      </div>
+                    ))}
+                  </div>
+                </div>
+              )}
+
+              {/* Auto-confirmed section (collapsed by default) */}
+              {autoConfirmedEntries.length > 0 && (
+                <div className="mb-6">
+                  <button
+                    onClick={() => setShowAutoConfirmed((v) => !v)}
+                    className="flex items-center gap-2 text-sm font-semibold text-green-700 mb-3"
+                  >
+                    <span className={`transition-transform ${showAutoConfirmed ? "rotate-90" : ""}`}>&#9654;</span>
+                    <span className="inline-block w-2 h-2 rounded-full bg-green-500" />
+                    Auto-confirmed ({autoConfirmedEntries.length})
+                  </button>
+                  {showAutoConfirmed && (
                     <div className="space-y-2">
-                      {entriesByDate.get(date)!.map((entry) => (
+                      {autoConfirmedEntries.map((entry) => (
                         <EntryRow
                           key={entry.eventId}
                           entry={entry}
                           employees={fetchResult.employees}
                           decision={getDecision(entry)}
                           onChange={updateDecision}
+                          onAlwaysIgnore={handleAlwaysIgnore}
                         />
                       ))}
                     </div>
+                  )}
+                </div>
+              )}
+
+              {/* Locked entries (already applied / inactive) */}
+              {lockedEntries.length > 0 && (
+                <div className="mb-6">
+                  <p className="text-xs text-gray-400 mb-2">
+                    {lockedEntries.length} event{lockedEntries.length === 1 ? "" : "s"} already applied or inactive
+                  </p>
+                  <div className="space-y-2">
+                    {lockedEntries.map((entry) => (
+                      <EntryRow
+                        key={entry.eventId}
+                        entry={entry}
+                        employees={fetchResult.employees}
+                        decision={getDecision(entry)}
+                        onChange={updateDecision}
+                        onAlwaysIgnore={handleAlwaysIgnore}
+                      />
+                    ))}
                   </div>
-                ))}
-              </div>
+                </div>
+              )}
 
               {/* Additional entries */}
               {additionalEntries.length > 0 && (
@@ -554,7 +748,25 @@ export function AdminCalendarDigestPage() {
               )}
             </>
           )}
+
+          {/* Ignored titles management */}
+          <div className="mt-6">
+            <IgnoredTitlesSection
+              ignoredTitles={ignoredTitles}
+              onRemove={(title) => removeIgnoredMutation.mutate(title)}
+            />
+          </div>
         </>
+      )}
+
+      {/* Show ignored titles even before fetching events */}
+      {!fetchResult && ignoredTitles.length > 0 && (
+        <div className="mt-6">
+          <IgnoredTitlesSection
+            ignoredTitles={ignoredTitles}
+            onRemove={(title) => removeIgnoredMutation.mutate(title)}
+          />
+        </div>
       )}
     </div>
   );

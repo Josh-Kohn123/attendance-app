@@ -5,6 +5,9 @@
  * The admin reviews each calendar event, confirms or declines the proposed
  * attendance change, resolves ambiguous cases, and can add extra entries
  * before submitting.
+ *
+ * MATCHED entries are auto-confirmed (collapsed by default).
+ * Ambiguous entries require manual review before submitting.
  */
 
 import { useState } from "react";
@@ -348,10 +351,34 @@ export function CalendarDigestPage() {
 
   // Track each entry's decision state keyed by entryId
   const [decisions, setDecisions] = useState<Record<string, LocalDecision>>({});
+  const [decisionsInitialized, setDecisionsInitialized] = useState(false);
   const [stagedExtras, setStagedExtras] = useState<StagedEntry[]>([]);
   const [nextKey, setNextKey] = useState(0);
+  const [showAutoConfirmed, setShowAutoConfirmed] = useState(false);
 
-  // Initialise decisions when digest loads
+  // Auto-confirm MATCHED entries when digest first loads
+  if (digest && !decisionsInitialized) {
+    const autoDecisions: Record<string, LocalDecision> = {};
+    for (const entry of digest.entries) {
+      if (
+        entry.matchType === "MATCHED" &&
+        !entry.hasExistingEntry &&
+        entry.decision === "PENDING"
+      ) {
+        autoDecisions[entry.id] = {
+          entryId: entry.id,
+          decision: "CONFIRMED",
+          resolvedEmployeeId: entry.proposedEmployeeId ?? undefined,
+          resolvedStatus: entry.proposedStatus ?? undefined,
+          startDate: entry.startDate,
+          endDate: entry.endDate,
+        };
+      }
+    }
+    setDecisions(autoDecisions);
+    setDecisionsInitialized(true);
+  }
+
   const getDecision = (entry: DigestEntry): LocalDecision => {
     if (decisions[entry.id]) return decisions[entry.id];
     return {
@@ -436,10 +463,22 @@ export function CalendarDigestPage() {
     );
   }
 
+  // Separate entries into auto-confirmed vs needs-review
   const actionableEntries = digest.entries.filter(
     (e) => !e.hasExistingEntry && e.matchType !== "INACTIVE_EMPLOYEE",
   );
-  const pendingCount = actionableEntries.filter(
+
+  const autoConfirmedEntries = actionableEntries.filter(
+    (e) => e.matchType === "MATCHED",
+  );
+  const needsReviewEntries = actionableEntries.filter(
+    (e) => e.matchType !== "MATCHED",
+  );
+  const lockedEntries = digest.entries.filter(
+    (e) => e.hasExistingEntry || e.matchType === "INACTIVE_EMPLOYEE",
+  );
+
+  const pendingCount = needsReviewEntries.filter(
     (e) => getDecision(e).decision === "PENDING",
   ).length;
 
@@ -452,22 +491,84 @@ export function CalendarDigestPage() {
           <p className="text-gray-500 text-sm mt-1">
             Calendar digest for <span className="font-medium text-gray-700">{digest.date}</span>
             {" · "}{digest.entries.length} event{digest.entries.length === 1 ? "" : "s"}
+            {autoConfirmedEntries.length > 0 && (
+              <span className="text-green-600 ml-1">
+                ({autoConfirmedEntries.length} auto-confirmed)
+              </span>
+            )}
           </p>
         </div>
 
-        {/* Event entries */}
-        <div className="space-y-3 mb-6">
-          {digest.entries.map((entry) => (
-            <EntryRow
-              key={entry.id}
-              entry={entry}
-              digestDate={digest.date}
-              employees={digest.employees}
-              decision={getDecision(entry)}
-              onChange={updateDecision}
-            />
-          ))}
-        </div>
+        {/* Needs Review section */}
+        {needsReviewEntries.length > 0 && (
+          <div className="mb-6">
+            <h2 className="text-sm font-semibold text-amber-700 mb-3 flex items-center gap-2">
+              <span className="inline-block w-2 h-2 rounded-full bg-amber-500" />
+              Needs review ({needsReviewEntries.length})
+            </h2>
+            <div className="space-y-3">
+              {needsReviewEntries.map((entry) => (
+                <EntryRow
+                  key={entry.id}
+                  entry={entry}
+                  digestDate={digest.date}
+                  employees={digest.employees}
+                  decision={getDecision(entry)}
+                  onChange={updateDecision}
+                />
+              ))}
+            </div>
+          </div>
+        )}
+
+        {/* Auto-confirmed section (collapsed by default) */}
+        {autoConfirmedEntries.length > 0 && (
+          <div className="mb-6">
+            <button
+              onClick={() => setShowAutoConfirmed((v) => !v)}
+              className="flex items-center gap-2 text-sm font-semibold text-green-700 mb-3"
+            >
+              <span className={`transition-transform ${showAutoConfirmed ? "rotate-90" : ""}`}>&#9654;</span>
+              <span className="inline-block w-2 h-2 rounded-full bg-green-500" />
+              Auto-confirmed ({autoConfirmedEntries.length})
+            </button>
+            {showAutoConfirmed && (
+              <div className="space-y-3">
+                {autoConfirmedEntries.map((entry) => (
+                  <EntryRow
+                    key={entry.id}
+                    entry={entry}
+                    digestDate={digest.date}
+                    employees={digest.employees}
+                    decision={getDecision(entry)}
+                    onChange={updateDecision}
+                  />
+                ))}
+              </div>
+            )}
+          </div>
+        )}
+
+        {/* Locked entries */}
+        {lockedEntries.length > 0 && (
+          <div className="mb-6">
+            <p className="text-xs text-gray-400 mb-2">
+              {lockedEntries.length} event{lockedEntries.length === 1 ? "" : "s"} already applied or inactive
+            </p>
+            <div className="space-y-3">
+              {lockedEntries.map((entry) => (
+                <EntryRow
+                  key={entry.id}
+                  entry={entry}
+                  digestDate={digest.date}
+                  employees={digest.employees}
+                  decision={getDecision(entry)}
+                  onChange={updateDecision}
+                />
+              ))}
+            </div>
+          </div>
+        )}
 
         {/* Staged extra entries */}
         {stagedExtras.length > 0 && (
@@ -489,7 +590,7 @@ export function CalendarDigestPage() {
                     onClick={() => setStagedExtras((prev) => prev.filter((e) => e._key !== extra._key))}
                     className="text-gray-400 hover:text-red-500 ml-3"
                   >
-                    ✕
+                    X
                   </button>
                 </div>
               );

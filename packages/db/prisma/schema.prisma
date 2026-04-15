@@ -35,6 +35,7 @@ model Org {
   monthlyReports MonthlyReport[]
   calendarDigestAdminUser User? @relation("CalendarDigestAdmin", fields: [calendarDigestAdminUserId], references: [id])
   calendarDigests CalendarDigest[]
+  ignoredCalendarEvents IgnoredCalendarEvent[]
 
   @@map("orgs")
 }
@@ -434,4 +435,19 @@ model CalendarDigestEntry {
   @@index([digestId])
   @@index([eventId])
   @@map("calendar_digest_entries")
+}
+
+// ─── Ignored Calendar Events (Always-Ignore blocklist) ──────────────
+
+model IgnoredCalendarEvent {
+  id         String   @id @default(uuid()) @db.Uuid
+  orgId      String   @map("org_id") @db.Uuid
+  eventTitle String   @map("event_title") @db.VarChar(500)
+  createdAt  DateTime @default(now()) @map("created_at")
+
+  org Org @relation(fields: [orgId], references: [id])
+
+  @@unique([orgId, eventTitle])
+  @@index([orgId])
+  @@map("ignored_calendar_events")
 }
