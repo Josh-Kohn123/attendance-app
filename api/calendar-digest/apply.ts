@@ -100,60 +100,70 @@ async function checkSubmittedReportMismatch(
 
 export default withAuth(
   async (req: VercelRequest, res: VercelResponse, ctx) => {
-    const { entries = [], additionalEntries = [] } = (req.body ?? {}) as {
-      entries?: Array<{
-        employeeId: string;
-        status: string;
-        startDate: string;
-        endDate: string;
-      }>;
-      additionalEntries?: Array<{
-        employeeId: string;
-        status: string;
-        startDate: string;
-        endDate: string;
-      }>;
-    };
+    try {
+      const { entries = [], additionalEntries = [] } = (req.body ?? {}) as {
+        entries?: Array<{
+          employeeId: string;
+          status: string;
+          startDate: string;
+          endDate: string;
+        }>;
+        additionalEntries?: Array<{
+          employeeId: string;
+          status: string;
+          startDate: string;
+          endDate: string;
+        }>;
+      };
 
-    const systemUserId = process.env.SYSTEM_USER_ID;
-    if (!systemUserId) {
-      return res.status(500).json({ ok: false, error: { code: "CONFIG_ERROR", message: "SYSTEM_USER_ID not configured" } });
-    }
+      console.log("[CalendarDigest/apply] Received", entries.length, "entries,", additionalEntries.length, "additional");
 
-    // Get admin email for mismatch notifications
-    const adminUser = await prisma.user.findUnique({
-      where: { id: ctx.userId },
-      select: { email: true },
-    });
-    const adminEmail = adminUser?.email ?? "";
+      const systemUserId = process.env.SYSTEM_USER_ID;
+      if (!systemUserId) {
+        return res.status(500).json({ ok: false, error: { code: "CONFIG_ERROR", message: "SYSTEM_USER_ID not configured" } });
+      }
 
-    let applied = 0;
-
-    const allEntries = [...entries, ...additionalEntries];
-    for (const entry of allEntries) {
-      const employee = await prisma.employee.findUnique({
-        where: { id: entry.employeeId },
-        select: { id: true, siteId: true, orgId: true, isActive: true },
+      // Get admin email for mismatch notifications
+      const adminUser = await prisma.user.findUnique({
+        where: { id: ctx.userId },
+        select: { email: true },
       });
+      const adminEmail = adminUser?.email ?? "";
 
-      if (!employee || !employee.isActive || employee.orgId !== ctx.orgId) continue;
+      let applied = 0;
 
-      const workdays = getWorkdaysInRange(entry.startDate, entry.endDate);
-      const changes: Array<{ date: string; previousStatus: string | null; newStatus: string }> = [];
-      for (const date of workdays) {
-        const { previousStatus } = await applyAttendanceForced(ctx.orgId, employee, date, entry.status, systemUserId);
-        changes.push({ date, previousStatus, newStatus: entry.status });
+      const allEntries = [...entries, ...additionalEntries];
+      for (const entry of allEntries) {
+        console.log("[CalendarDigest/apply] Processing entry:", entry.employeeId, entry.status, entry.startDate, "→", entry.endDate);
+
+        const employee = await prisma.employee.findUnique({
+          where: { id: entry.employeeId },
+          select: { id: true, siteId: true, orgId: true, isActive: true },
+        });
+
+        if (!employee || !employee.isActive || employee.orgId !== ctx.orgId) continue;
+
+        const workdays = getWorkdaysInRange(entry.startDate, entry.endDate);
+        const changes: Array<{ date: string; previousStatus: string | null; newStatus: string }> = [];
+        for (const date of workdays) {
+          const { previousStatus } = await applyAttendanceForced(ctx.orgId, employee, date, entry.status, systemUserId);
+          changes.push({ date, previousStatus, newStatus: entry.status });
+        }
+
+        // Check if this employee has a submitted report that now mismatches
+        if (adminEmail) {
+          await checkSubmittedReportMismatch(ctx.orgId, entry.employeeId, entry.startDate, entry.endDate, adminEmail, changes);
+        }
+
+        applied++;
       }
 
-      // Check if this employee has a submitted report that now mismatches
-      if (adminEmail) {
-        await checkSubmittedReportMismatch(ctx.orgId, entry.employeeId, entry.startDate, entry.endDate, adminEmail, changes);
-      }
-
-      applied++;
+      return { ok: true, data: { applied } };
+    } catch (err) {
+      const message = err instanceof Error ? err.message : String(err);
+      console.error("[CalendarDigest/apply] Error:", message, err);
+      return res.status(500).json({ ok: false, error: { code: "APPLY_ERROR", message } });
     }
-
-    return { ok: true, data: { applied } };
   },
   { permission: "admin.policies", methods: ["POST"] },
 );
