@@ -193,6 +193,16 @@ function BulkPanel({
 
 // ─── Report Status Banner ─────────────────────────────────────────────────────
 
+function SummaryLine({ counts }: { counts: { worked: number; vacation: number; sick: number } }) {
+  return (
+    <p className="mt-1 text-xs text-gray-500">
+      Worked: <span className="font-medium text-gray-700">{counts.worked}</span>
+      {" · "}Vacation: <span className="font-medium text-gray-700">{counts.vacation}</span>
+      {" · "}Sick: <span className="font-medium text-gray-700">{counts.sick}</span>
+    </p>
+  );
+}
+
 function ReportBanner({
   reportStatus,
   onSubmit,
@@ -200,6 +210,7 @@ function ReportBanner({
   periodLabel,
   isPeriodEnded,
   periodEndDate,
+  summaryCounts,
 }: {
   reportStatus: { status: ReportStatus; reviewerName?: string | null; reviewComment?: string | null };
   onSubmit: () => void;
@@ -207,19 +218,23 @@ function ReportBanner({
   periodLabel: string;
   isPeriodEnded: boolean;
   periodEndDate: string;
+  summaryCounts: { worked: number; vacation: number; sick: number };
 }) {
   const st = reportStatus.status;
 
   if (st === "DRAFT") {
     return (
       <div className="mb-4 flex items-center justify-between rounded-xl border border-gray-200 bg-gray-50 p-4">
-        <div className="flex items-center gap-2">
-          <Send size={16} className="text-gray-400" />
-          <span className="text-sm text-gray-600">
-            {isPeriodEnded
-              ? "Report not yet submitted. Fill in your attendance and submit when ready."
-              : `Submission opens after the reporting period ends (${dayjs(periodEndDate).format("MMM D, YYYY")}).`}
-          </span>
+        <div className="flex items-start gap-2">
+          <Send size={16} className="mt-0.5 text-gray-400" />
+          <div>
+            <span className="text-sm text-gray-600">
+              {isPeriodEnded
+                ? "Report not yet submitted. Fill in your attendance and submit when ready."
+                : `Submission opens after the reporting period ends (${dayjs(periodEndDate).format("MMM D, YYYY")}).`}
+            </span>
+            <SummaryLine counts={summaryCounts} />
+          </div>
         </div>
         <button
           onClick={onSubmit}
@@ -276,6 +291,7 @@ function ReportBanner({
               </div>
             )}
             <p className="mt-2 text-xs text-red-600">Please update your calendar and resubmit.</p>
+            <SummaryLine counts={summaryCounts} />
           </div>
           <button
             onClick={onSubmit}
@@ -490,6 +506,17 @@ export function CalendarPage() {
 
   const [submitError, setSubmitError] = useState<string | null>(null);
 
+  // ── Counts for the pre-submission summary (Worked / Vacation / Sick) ──
+  const summaryCounts = useMemo(() => {
+    let worked = 0, vacation = 0, sick = 0;
+    for (const status of statusByDate.values()) {
+      if (status === "PRESENT" || status === "WORK_FROM_HOME") worked++;
+      else if (status === "VACATION") vacation++;
+      else if (status === "SICK") sick++;
+    }
+    return { worked, vacation, sick };
+  }, [statusByDate]);
+
   // ── Compute unfilled workdays for validation ──
   // Returns empty while data is still loading so the grid doesn't flash red on first paint.
   const unfilledWorkdays = useMemo(() => {
@@ -605,6 +632,7 @@ export function CalendarPage() {
           periodLabel={periodLabel}
           isPeriodEnded={isPeriodEnded}
           periodEndDate={to}
+          summaryCounts={summaryCounts}
         />
 
         {/* Validation error */}
