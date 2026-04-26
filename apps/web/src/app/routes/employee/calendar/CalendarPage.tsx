@@ -81,13 +81,13 @@ function StatusPicker({
 }) {
   const statuses = isHolidayEve ? HOLIDAY_EVE_STATUSES : PICKABLE_STATUSES;
   return (
-    <div className="absolute z-50 mt-2 w-44 rounded-xl bg-white shadow-lg ring-1 ring-gray-200">
-      <div className="flex items-center justify-between border-b border-gray-100 px-3 py-2">
-        <span className="text-xs font-semibold text-gray-500 uppercase tracking-wide">
+    <div className="absolute z-50 mt-2 w-44 rounded-xl bg-white shadow-lg ring-1 ring-gray-200 dark:bg-gray-900 dark:ring-gray-700">
+      <div className="flex items-center justify-between border-b border-gray-100 px-3 py-2 dark:border-gray-800">
+        <span className="text-xs font-semibold text-gray-500 uppercase tracking-wide dark:text-gray-400">
           {isHolidayEve ? "Holiday Eve — take half day?" : "Set status"}
         </span>
-        <button onClick={onClose} className="rounded p-0.5 hover:bg-gray-100">
-          <X size={14} className="text-gray-400" />
+        <button onClick={onClose} className="rounded p-0.5 hover:bg-gray-100 dark:hover:bg-gray-800">
+          <X size={14} className="text-gray-400 dark:text-gray-500" />
         </button>
       </div>
       <div className="p-1">
@@ -98,7 +98,7 @@ function StatusPicker({
               key={key}
               onClick={() => onSelect(key)}
               className={clsx(
-                "flex w-full items-center gap-2 rounded-lg px-3 py-2 text-sm transition-colors hover:bg-gray-50",
+                "flex w-full items-center gap-2 rounded-lg px-3 py-2 text-sm transition-colors hover:bg-gray-50 dark:text-gray-200 dark:hover:bg-gray-800",
                 current === key && `${cfg.bg} ${cfg.text} font-medium`
               )}
             >
@@ -152,21 +152,21 @@ function BulkPanel({
   isPending: boolean;
 }) {
   return (
-    <div className="mt-4 rounded-xl border border-blue-200 bg-blue-50 p-4">
+    <div className="mt-4 rounded-xl border border-blue-200 bg-blue-50 p-4 dark:border-blue-900/60 dark:bg-blue-950/40">
       <div className="mb-3 flex items-center justify-between">
-        <span className="text-sm font-semibold text-blue-800">
+        <span className="text-sm font-semibold text-blue-800 dark:text-blue-200">
           {count} day{count !== 1 ? "s" : ""} selected
         </span>
         <div className="flex gap-2">
-          <button onClick={onClear} className="text-xs text-blue-600 underline hover:text-blue-800">
+          <button onClick={onClear} className="text-xs text-blue-600 underline hover:text-blue-800 dark:text-blue-300 dark:hover:text-blue-200">
             Clear selection
           </button>
-          <button onClick={onCancel} className="text-xs text-gray-500 underline hover:text-gray-700">
+          <button onClick={onCancel} className="text-xs text-gray-500 underline hover:text-gray-700 dark:text-gray-400 dark:hover:text-gray-200">
             Exit multi-select
           </button>
         </div>
       </div>
-      <p className="mb-2 text-xs text-blue-700">Apply status to all selected days:</p>
+      <p className="mb-2 text-xs text-blue-700 dark:text-blue-300">Apply status to all selected days:</p>
       <div className="flex flex-wrap gap-2">
         {PICKABLE_STATUSES.map((key) => {
           const cfg = STATUS_CONFIG[key];
@@ -195,10 +195,10 @@ function BulkPanel({
 
 function SummaryLine({ counts }: { counts: { worked: number; vacation: number; sick: number } }) {
   return (
-    <p className="mt-1 text-xs text-gray-500">
-      Worked: <span className="font-medium text-gray-700">{counts.worked}</span>
-      {" · "}Vacation: <span className="font-medium text-gray-700">{counts.vacation}</span>
-      {" · "}Sick: <span className="font-medium text-gray-700">{counts.sick}</span>
+    <p className="mt-1 text-xs text-gray-500 dark:text-gray-400">
+      Worked: <span className="font-medium text-gray-700 dark:text-gray-200">{counts.worked}</span>
+      {" · "}Vacation: <span className="font-medium text-gray-700 dark:text-gray-200">{counts.vacation}</span>
+      {" · "}Sick: <span className="font-medium text-gray-700 dark:text-gray-200">{counts.sick}</span>
     </p>
   );
 }
@@ -224,11 +224,11 @@ function ReportBanner({
 
   if (st === "DRAFT") {
     return (
-      <div className="mb-4 flex items-center justify-between rounded-xl border border-gray-200 bg-gray-50 p-4">
+      <div className="mb-4 flex items-center justify-between rounded-xl border border-gray-200 bg-gray-50 p-4 dark:border-gray-700 dark:bg-gray-800/50">
         <div className="flex items-start gap-2">
-          <Send size={16} className="mt-0.5 text-gray-400" />
+          <Send size={16} className="mt-0.5 text-gray-400 dark:text-gray-500" />
           <div>
-            <span className="text-sm text-gray-600">
+            <span className="text-sm text-gray-600 dark:text-gray-300">
               {isPeriodEnded
                 ? "Report not yet submitted. Fill in your attendance and submit when ready."
                 : `Submission opens after the reporting period ends (${dayjs(periodEndDate).format("MMM D, YYYY")}).`}
@@ -250,11 +250,11 @@ function ReportBanner({
 
   if (st === "SUBMITTED") {
     return (
-      <div className="mb-4 flex items-center gap-3 rounded-xl border border-blue-200 bg-blue-50 p-4">
-        <Clock size={18} className="flex-shrink-0 text-blue-500" />
+      <div className="mb-4 flex items-center gap-3 rounded-xl border border-blue-200 bg-blue-50 p-4 dark:border-blue-900/60 dark:bg-blue-950/40">
+        <Clock size={18} className="flex-shrink-0 text-blue-500 dark:text-blue-400" />
         <div>
-          <p className="text-sm font-medium text-blue-800">Awaiting manager approval</p>
-          <p className="text-xs text-blue-600">Your report has been submitted and is pending review. Calendar is locked until reviewed.</p>
+          <p className="text-sm font-medium text-blue-800 dark:text-blue-200">Awaiting manager approval</p>
+          <p className="text-xs text-blue-600 dark:text-blue-300">Your report has been submitted and is pending review. Calendar is locked until reviewed.</p>
         </div>
       </div>
     );
@@ -262,35 +262,35 @@ function ReportBanner({
 
   if (st === "APPROVED") {
     return (
-      <div className="mb-4 flex items-center gap-3 rounded-xl border border-green-200 bg-green-50 p-4">
-        <CheckCircle size={18} className="flex-shrink-0 text-green-500" />
+      <div className="mb-4 flex items-center gap-3 rounded-xl border border-green-200 bg-green-50 p-4 dark:border-green-900/60 dark:bg-green-950/40">
+        <CheckCircle size={18} className="flex-shrink-0 text-green-500 dark:text-green-400" />
         <div>
-          <p className="text-sm font-medium text-green-800">Report approved</p>
-          <p className="text-xs text-green-600">
+          <p className="text-sm font-medium text-green-800 dark:text-green-200">Report approved</p>
+          <p className="text-xs text-green-600 dark:text-green-300">
             Approved{reportStatus.reviewerName ? ` by ${reportStatus.reviewerName}` : ""}. This period is now locked.
           </p>
         </div>
-        <Lock size={14} className="ml-auto flex-shrink-0 text-green-400" />
+        <Lock size={14} className="ml-auto flex-shrink-0 text-green-400 dark:text-green-500" />
       </div>
     );
   }
 
   if (st === "REJECTED") {
     return (
-      <div className="mb-4 rounded-xl border border-red-200 bg-red-50 p-4">
+      <div className="mb-4 rounded-xl border border-red-200 bg-red-50 p-4 dark:border-red-900/60 dark:bg-red-950/40">
         <div className="flex items-start gap-3">
-          <AlertCircle size={18} className="mt-0.5 flex-shrink-0 text-red-500" />
+          <AlertCircle size={18} className="mt-0.5 flex-shrink-0 text-red-500 dark:text-red-400" />
           <div className="flex-1">
-            <p className="text-sm font-medium text-red-800">Corrections needed</p>
+            <p className="text-sm font-medium text-red-800 dark:text-red-200">Corrections needed</p>
             {reportStatus.reviewComment && (
-              <div className="mt-2 rounded-lg border border-red-200 bg-white p-3">
-                <p className="text-xs text-gray-500">
+              <div className="mt-2 rounded-lg border border-red-200 bg-white p-3 dark:border-red-900/60 dark:bg-gray-900">
+                <p className="text-xs text-gray-500 dark:text-gray-400">
                   {reportStatus.reviewerName ? `${reportStatus.reviewerName}: ` : "Manager: "}
                 </p>
-                <p className="mt-0.5 text-sm text-red-700">"{reportStatus.reviewComment}"</p>
+                <p className="mt-0.5 text-sm text-red-700 dark:text-red-300">"{reportStatus.reviewComment}"</p>
               </div>
             )}
-            <p className="mt-2 text-xs text-red-600">Please update your calendar and resubmit.</p>
+            <p className="mt-2 text-xs text-red-600 dark:text-red-300">Please update your calendar and resubmit.</p>
             <SummaryLine counts={summaryCounts} />
           </div>
           <button
@@ -317,11 +317,11 @@ function ConfirmDialog({
   if (!open) return null;
   return (
     <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/40">
-      <div className="w-96 rounded-2xl bg-white p-6 shadow-xl">
-        <h3 className="text-lg font-semibold text-gray-900">{title}</h3>
-        <p className="mt-2 text-sm text-gray-600">{message}</p>
+      <div className="w-96 rounded-2xl bg-white p-6 shadow-xl dark:bg-gray-900 dark:shadow-black/50">
+        <h3 className="text-lg font-semibold text-gray-900 dark:text-gray-100">{title}</h3>
+        <p className="mt-2 text-sm text-gray-600 dark:text-gray-300">{message}</p>
         <div className="mt-6 flex justify-end gap-3">
-          <button onClick={onCancel} className="rounded-lg px-4 py-2 text-sm font-medium text-gray-700 hover:bg-gray-100">Cancel</button>
+          <button onClick={onCancel} className="rounded-lg px-4 py-2 text-sm font-medium text-gray-700 hover:bg-gray-100 dark:text-gray-200 dark:hover:bg-gray-800">Cancel</button>
           <button onClick={onConfirm} className="rounded-lg bg-blue-600 px-4 py-2 text-sm font-medium text-white hover:bg-blue-700">Submit</button>
         </div>
       </div>
@@ -662,7 +662,7 @@ export function CalendarPage() {
 
   return (
     <div className="mx-auto max-w-2xl">
-      <div className="rounded-2xl bg-white p-6 shadow-sm">
+      <div className="rounded-2xl bg-white p-6 shadow-sm dark:bg-gray-900 dark:shadow-black/30">
         {/* Report status banner */}
         <ReportBanner
           reportStatus={{ ...(reportStatus ?? {}), status: effectiveStatus }}
@@ -707,19 +707,19 @@ export function CalendarPage() {
           <div className="flex items-center gap-2">
             <button
               onClick={() => setCurrentMonth((m) => m.subtract(1, "month"))}
-              className="rounded-lg p-2 hover:bg-gray-100"
+              className="rounded-lg p-2 text-gray-700 hover:bg-gray-100 dark:text-gray-200 dark:hover:bg-gray-800"
             >
               <ChevronLeft size={20} />
             </button>
             <div className="text-center">
-              <h3 className="text-lg font-semibold">
+              <h3 className="text-lg font-semibold text-gray-900 dark:text-gray-100">
                 {currentMonth.format("MMMM YYYY")}
               </h3>
-              <p className="text-xs text-gray-500">{periodLabel}</p>
+              <p className="text-xs text-gray-500 dark:text-gray-400">{periodLabel}</p>
             </div>
             <button
               onClick={() => setCurrentMonth((m) => m.add(1, "month"))}
-              className="rounded-lg p-2 hover:bg-gray-100"
+              className="rounded-lg p-2 text-gray-700 hover:bg-gray-100 dark:text-gray-200 dark:hover:bg-gray-800"
             >
               <ChevronRight size={20} />
             </button>
@@ -733,7 +733,9 @@ export function CalendarPage() {
               }}
               className={clsx(
                 "flex items-center gap-1.5 rounded-lg px-3 py-1.5 text-sm font-medium transition-colors",
-                multiSelectMode ? "bg-blue-600 text-white hover:bg-blue-700" : "bg-gray-100 text-gray-700 hover:bg-gray-200"
+                multiSelectMode
+                  ? "bg-blue-600 text-white hover:bg-blue-700"
+                  : "bg-gray-100 text-gray-700 hover:bg-gray-200 dark:bg-gray-800 dark:text-gray-200 dark:hover:bg-gray-700"
               )}
             >
               {multiSelectMode ? (<><CheckSquare size={16} /> Multi-select on</>) : (<><Square size={16} /> Select multiple</>)}
@@ -741,7 +743,7 @@ export function CalendarPage() {
           )}
 
           {!isEditable && (
-            <span className="flex items-center gap-1.5 text-sm text-gray-400">
+            <span className="flex items-center gap-1.5 text-sm text-gray-400 dark:text-gray-500">
               <Lock size={14} /> Read-only
             </span>
           )}
@@ -750,7 +752,7 @@ export function CalendarPage() {
         {/* Day headers + grid (relative wrapper so the loading curtain can overlay both) */}
         <div className="relative">
           {/* Day headers — clickable to toggle all of that weekday into multi-select */}
-          <div className="mb-2 grid grid-cols-7 text-center text-xs font-medium text-gray-400">
+          <div className="mb-2 grid grid-cols-7 text-center text-xs font-medium text-gray-400 dark:text-gray-500">
             {["Sun", "Mon", "Tue", "Wed", "Thu", "Fri", "Sat"].map((d, dow) => {
               const candidates = selectableDatesByWeekday[dow];
               const interactive = isEditable && candidates.length > 0;
@@ -765,9 +767,11 @@ export function CalendarPage() {
                   title={interactive ? `Select all ${d}s in this period` : undefined}
                   className={clsx(
                     "rounded py-1 transition-colors",
-                    interactive ? "cursor-pointer hover:bg-blue-50 hover:text-blue-700" : "cursor-default",
-                    allSelected && "bg-blue-600 text-white hover:bg-blue-600 hover:text-white",
-                    someSelected && "bg-blue-100 text-blue-700",
+                    interactive
+                      ? "cursor-pointer hover:bg-blue-50 hover:text-blue-700 dark:hover:bg-blue-950/50 dark:hover:text-blue-300"
+                      : "cursor-default",
+                    allSelected && "bg-blue-600 text-white hover:bg-blue-600 hover:text-white dark:hover:bg-blue-600 dark:hover:text-white",
+                    someSelected && "bg-blue-100 text-blue-700 dark:bg-blue-900/50 dark:text-blue-200",
                   )}
                 >
                   {d}
@@ -778,8 +782,8 @@ export function CalendarPage() {
 
           {/* Loading curtain — shown until holidays + attendance arrive */}
           {isCalendarLoading && (
-            <div className="absolute inset-0 z-30 flex items-center justify-center rounded-xl bg-white/80 backdrop-blur-sm">
-              <div className="flex flex-col items-center gap-2 text-gray-500">
+            <div className="absolute inset-0 z-30 flex items-center justify-center rounded-xl bg-white/80 backdrop-blur-sm dark:bg-gray-900/80">
+              <div className="flex flex-col items-center gap-2 text-gray-500 dark:text-gray-300">
                 <Loader2 size={28} className="animate-spin" />
                 <span className="text-xs">Loading calendar…</span>
               </div>
@@ -811,16 +815,16 @@ export function CalendarPage() {
                   disabled={!clickable}
                   title={cfg ? cfg.label : isUnfilled ? "Unfilled — needs status" : isAutoFilled ? "Auto-filled" : undefined}
                   className={clsx(
-                    "relative flex h-14 w-full flex-col items-center justify-center rounded-xl text-sm transition-colors",
-                    weekend && !cfg && !selected && "bg-gray-50 text-gray-500",
-                    future && "text-gray-300",
+                    "relative flex h-14 w-full flex-col items-center justify-center rounded-xl text-sm transition-colors text-gray-800 dark:text-gray-200",
+                    weekend && !cfg && !selected && "bg-gray-50 text-gray-500 dark:bg-gray-800/50 dark:text-gray-500",
+                    future && "text-gray-300 dark:text-gray-600",
                     today && "ring-2 ring-blue-400",
-                    isUnfilled && !selected && "bg-red-50 text-red-700 ring-1 ring-red-300",
+                    isUnfilled && !selected && "bg-red-50 text-red-700 ring-1 ring-red-300 dark:bg-red-950/40 dark:text-red-300 dark:ring-red-900/60",
                     cfg && !selected && !isUnfilled && `${cfg.bg} ${cfg.text}`,
                     selected && "bg-blue-600 text-white ring-2 ring-blue-600",
-                    clickable && !cfg && !selected && !isUnfilled && "hover:bg-gray-50",
+                    clickable && !cfg && !selected && !isUnfilled && "hover:bg-gray-50 dark:hover:bg-gray-800/60",
                     clickable && cfg && !selected && "hover:opacity-80",
-                    clickable && isUnfilled && !selected && "hover:bg-red-100",
+                    clickable && isUnfilled && !selected && "hover:bg-red-100 dark:hover:bg-red-900/40",
                     !isEditable && !weekend && !future && !cfg && "opacity-60",
                     isPickerOpen && "ring-2 ring-blue-400",
                   )}
@@ -861,7 +865,7 @@ export function CalendarPage() {
         </div>
 
         {/* Legend */}
-        <div className="mt-4 flex flex-wrap gap-3 text-xs text-gray-500">
+        <div className="mt-4 flex flex-wrap gap-3 text-xs text-gray-500 dark:text-gray-400">
           {(Object.entries(STATUS_CONFIG) as [DayStatus, (typeof STATUS_CONFIG)[DayStatus]][]).map(
             ([key, cfg]) => (
               <span key={key} className="flex items-center gap-1">
@@ -871,12 +875,12 @@ export function CalendarPage() {
             )
           )}
           {unfilledWorkdays.size > 0 && (
-            <span className="flex items-center gap-1 text-red-500 font-medium">
-              <span className="inline-block h-3 w-3 rounded-full bg-red-200 ring-1 ring-red-300" />
+            <span className="flex items-center gap-1 text-red-500 font-medium dark:text-red-400">
+              <span className="inline-block h-3 w-3 rounded-full bg-red-200 ring-1 ring-red-300 dark:bg-red-900/60 dark:ring-red-700" />
               {unfilledWorkdays.size} unfilled
             </span>
           )}
-          <span className="ml-auto text-gray-400">
+          <span className="ml-auto text-gray-400 dark:text-gray-500">
             {!isEditable
               ? "Calendar is locked"
               : multiSelectMode

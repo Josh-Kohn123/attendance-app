@@ -101,28 +101,28 @@ export function ManagerReports() {
       {/* Header + month nav */}
       <div className="mb-4 flex items-center justify-between">
         <div>
-          <h3 className="text-lg font-semibold">Team Report — {month.format("MMMM YYYY")}</h3>
+          <h3 className="text-lg font-semibold text-gray-900 dark:text-gray-100">Team Report — {month.format("MMMM YYYY")}</h3>
           {monthStartDay !== 1 && (
-            <p className="text-xs text-gray-400">{from} to {to}</p>
+            <p className="text-xs text-gray-400 dark:text-gray-500">{from} to {to}</p>
           )}
         </div>
         <div className="flex gap-2">
-          <button onClick={() => { if (m === 1) { setM(12); setY(y - 1); } else setM(m - 1); }} className="rounded-lg border px-3 py-1 text-sm hover:bg-gray-50">&larr;</button>
-          <button onClick={() => { setM(dayjs().month() + 1); setY(dayjs().year()); }} className="rounded-lg border px-3 py-1 text-sm hover:bg-gray-50">This month</button>
-          <button onClick={() => { if (m === 12) { setM(1); setY(y + 1); } else setM(m + 1); }} className="rounded-lg border px-3 py-1 text-sm hover:bg-gray-50">&rarr;</button>
+          <button onClick={() => { if (m === 1) { setM(12); setY(y - 1); } else setM(m - 1); }} className="rounded-lg border px-3 py-1 text-sm text-gray-700 hover:bg-gray-50 dark:border-gray-700 dark:text-gray-200 dark:hover:bg-gray-800">&larr;</button>
+          <button onClick={() => { setM(dayjs().month() + 1); setY(dayjs().year()); }} className="rounded-lg border px-3 py-1 text-sm text-gray-700 hover:bg-gray-50 dark:border-gray-700 dark:text-gray-200 dark:hover:bg-gray-800">This month</button>
+          <button onClick={() => { if (m === 12) { setM(1); setY(y + 1); } else setM(m + 1); }} className="rounded-lg border px-3 py-1 text-sm text-gray-700 hover:bg-gray-50 dark:border-gray-700 dark:text-gray-200 dark:hover:bg-gray-800">&rarr;</button>
         </div>
       </div>
 
       {/* Self-report approval banner */}
       {selfReport && (
-        <div className="mb-4 rounded-xl border-2 border-primary-200 bg-primary-50 p-4">
+        <div className="mb-4 rounded-xl border-2 border-primary-200 bg-primary-50 p-4 dark:border-primary-900/60 dark:bg-primary-950/40">
           <div className="flex items-center justify-between">
             <div className="flex items-center gap-3">
-              <div className="flex h-9 w-9 items-center justify-center rounded-full bg-primary-200">
-                <User size={16} className="text-primary-700" />
+              <div className="flex h-9 w-9 items-center justify-center rounded-full bg-primary-200 dark:bg-primary-900/60">
+                <User size={16} className="text-primary-700 dark:text-primary-300" />
               </div>
               <div>
-                <p className="text-sm font-semibold text-primary-900">Your Report — {month.format("MMMM YYYY")}</p>
+                <p className="text-sm font-semibold text-primary-900 dark:text-primary-100">Your Report — {month.format("MMMM YYYY")}</p>
               </div>
             </div>
             <div className="flex items-center gap-3">
@@ -142,36 +142,36 @@ export function ManagerReports() {
       )}
 
       {/* Main table */}
-      <div className="rounded-xl bg-white shadow-sm">
+      <div className="rounded-xl bg-white shadow-sm dark:bg-gray-900 dark:shadow-black/30">
         {isLoading ? (
-          <p className="p-6 text-center text-gray-500">Loading...</p>
+          <p className="p-6 text-center text-gray-500 dark:text-gray-400">Loading...</p>
         ) : !mergedRows.length ? (
-          <p className="p-6 text-center text-gray-500">No data for this period.</p>
+          <p className="p-6 text-center text-gray-500 dark:text-gray-400">No data for this period.</p>
         ) : (
           <table className="w-full text-sm">
-            <thead className="sticky top-0 z-10 bg-white shadow-sm">
-              <tr className="border-b text-left text-xs uppercase tracking-wide text-gray-500">
-                <th className="p-3 font-medium bg-white">Employee</th>
-                <th className="p-3 font-medium bg-white">Department</th>
-                <th className="p-3 font-medium text-center bg-white">Total</th>
-                <th className="p-3 font-medium text-center bg-white">Present</th>
-                <th className="p-3 font-medium text-center bg-white">Sick</th>
-                <th className="p-3 font-medium text-center bg-white">Child Sick</th>
-                <th className="p-3 font-medium text-center bg-white">Vacation</th>
-                <th className="p-3 font-medium text-center bg-white">Reserves</th>
-                <th className="p-3 font-medium text-center bg-white">Half Day Off</th>
-                <th className="p-3 font-medium text-center bg-white">Work From Home</th>
-                <th className="p-3 font-medium text-center bg-white">Public Holiday</th>
-                <th className="p-3 font-medium text-center bg-white">Day Off</th>
-                <th className="p-3 font-medium text-center bg-white">Report Status</th>
-                <th className="p-3 font-medium text-center bg-white">Actions</th>
+            <thead className="sticky top-0 z-10 bg-white shadow-sm dark:bg-gray-900 dark:shadow-black/30">
+              <tr className="border-b text-left text-xs uppercase tracking-wide text-gray-500 dark:border-gray-800 dark:text-gray-400">
+                <th className="p-3 font-medium bg-white dark:bg-gray-900 dark:text-gray-300">Employee</th>
+                <th className="p-3 font-medium bg-white dark:bg-gray-900 dark:text-gray-300">Department</th>
+                <th className="p-3 font-medium text-center bg-white dark:bg-gray-900 dark:text-gray-300">Total</th>
+                <th className="p-3 font-medium text-center bg-white dark:bg-gray-900 dark:text-gray-300">Present</th>
+                <th className="p-3 font-medium text-center bg-white dark:bg-gray-900 dark:text-gray-300">Sick</th>
+                <th className="p-3 font-medium text-center bg-white dark:bg-gray-900 dark:text-gray-300">Child Sick</th>
+                <th className="p-3 font-medium text-center bg-white dark:bg-gray-900 dark:text-gray-300">Vacation</th>
+                <th className="p-3 font-medium text-center bg-white dark:bg-gray-900 dark:text-gray-300">Reserves</th>
+                <th className="p-3 font-medium text-center bg-white dark:bg-gray-900 dark:text-gray-300">Half Day Off</th>
+                <th className="p-3 font-medium text-center bg-white dark:bg-gray-900 dark:text-gray-300">Work From Home</th>
+                <th className="p-3 font-medium text-center bg-white dark:bg-gray-900 dark:text-gray-300">Public Holiday</th>
+                <th className="p-3 font-medium text-center bg-white dark:bg-gray-900 dark:text-gray-300">Day Off</th>
+                <th className="p-3 font-medium text-center bg-white dark:bg-gray-900 dark:text-gray-300">Report Status</th>
+                <th className="p-3 font-medium text-center bg-white dark:bg-gray-900 dark:text-gray-300">Actions</th>
               </tr>
             </thead>
             <tbody>
               {mergedRows.map((row: any) => (
-                <tr key={row.employeeId} className="border-b last:border-0 hover:bg-gray-50">
-                  <td className="p-3 font-medium">{row.employeeName ?? row.name}</td>
-                  <td className="p-3 text-gray-500">{row.departmentName ?? row.department ?? "—"}</td>
+                <tr key={row.employeeId} className="border-b last:border-0 hover:bg-gray-50 dark:border-gray-800 dark:hover:bg-gray-800/50">
+                  <td className="p-3 font-medium text-gray-800 dark:text-gray-100">{row.employeeName ?? row.name}</td>
+                  <td className="p-3 text-gray-500 dark:text-gray-400">{row.departmentName ?? row.department ?? "—"}</td>
                   <td className="p-3 text-center">
                     <span className="rounded-full bg-primary-50 px-2 py-0.5 font-medium text-primary-700">
                       {row.totalDays ?? 0}

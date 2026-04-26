@@ -1,5 +1,6 @@
 import { Outlet, NavLink, useLocation } from "react-router-dom";
 import { useAuth } from "../../auth/AuthProvider";
+import { useTheme } from "../../state/ThemeProvider";
 import {
   CalendarDays,
   FileText,
@@ -15,6 +16,8 @@ import {
   LogOut,
   Menu,
   X,
+  Sun,
+  Moon,
 } from "lucide-react";
 import { useState } from "react";
 import clsx from "clsx";
@@ -45,6 +48,7 @@ const navItems: NavItem[] = [
 
 export function AppLayout() {
   const { user, logout } = useAuth();
+  const { theme, toggleTheme } = useTheme();
   const [sidebarOpen, setSidebarOpen] = useState(false);
   const location = useLocation();
 
@@ -61,7 +65,7 @@ export function AppLayout() {
     if (items.length === 0) return null;
     return (
       <div className="mb-4">
-        <p className="mb-1 px-3 text-xs font-semibold uppercase tracking-wider text-gray-400">
+        <p className="mb-1 px-3 text-xs font-semibold uppercase tracking-wider text-gray-400 dark:text-gray-500">
           {label}
         </p>
         {items.map((item) => (
@@ -73,8 +77,8 @@ export function AppLayout() {
               clsx(
                 "flex items-center gap-3 rounded-lg px-3 py-2 text-sm font-medium transition-colors",
                 isActive
-                  ? "bg-primary-50 text-primary-700"
-                  : "text-gray-600 hover:bg-gray-100 hover:text-gray-900"
+                  ? "bg-primary-50 text-primary-700 dark:bg-primary-900/40 dark:text-primary-200"
+                  : "text-gray-600 hover:bg-gray-100 hover:text-gray-900 dark:text-gray-300 dark:hover:bg-gray-800 dark:hover:text-white"
               )
             }
           >
@@ -87,7 +91,7 @@ export function AppLayout() {
   };
 
   return (
-    <div className="flex h-screen">
+    <div className="flex h-screen bg-gray-50 dark:bg-gray-950">
       {/* Mobile overlay */}
       {sidebarOpen && (
         <div className="fixed inset-0 z-40 bg-black/30 lg:hidden" onClick={() => setSidebarOpen(false)} />
@@ -97,12 +101,13 @@ export function AppLayout() {
       <aside
         className={clsx(
           "fixed inset-y-0 left-0 z-50 flex w-64 flex-col border-r border-gray-200 bg-white transition-transform lg:static lg:translate-x-0",
+          "dark:border-gray-800 dark:bg-gray-900",
           sidebarOpen ? "translate-x-0" : "-translate-x-full"
         )}
       >
-        <div className="flex h-16 items-center justify-between border-b px-4">
-          <h1 className="text-lg font-bold text-primary-700">Orbs Attendance</h1>
-          <button onClick={() => setSidebarOpen(false)} className="lg:hidden">
+        <div className="flex h-16 items-center justify-between border-b px-4 dark:border-gray-800">
+          <h1 className="text-lg font-bold text-primary-700 dark:text-primary-300">Orbs Attendance</h1>
+          <button onClick={() => setSidebarOpen(false)} className="lg:hidden text-gray-500 dark:text-gray-300">
             <X size={20} />
           </button>
         </div>
@@ -113,23 +118,30 @@ export function AppLayout() {
           {renderNavGroup("Administration", adminItems)}
         </nav>
 
-        <div className="border-t p-3">
+        <div className="border-t p-3 dark:border-gray-800">
           <div className="flex items-center gap-3 rounded-lg px-3 py-2">
             {user?.avatarUrl ? (
               <img src={user.avatarUrl} alt="" className="h-8 w-8 rounded-full" />
             ) : (
-              <div className="flex h-8 w-8 items-center justify-center rounded-full bg-primary-100 text-sm font-medium text-primary-700">
+              <div className="flex h-8 w-8 items-center justify-center rounded-full bg-primary-100 text-sm font-medium text-primary-700 dark:bg-primary-900/40 dark:text-primary-200">
                 {user?.displayName?.[0] ?? "?"}
               </div>
             )}
             <div className="flex-1 truncate">
-              <p className="text-sm font-medium">{user?.displayName}</p>
-              <p className="text-xs text-gray-500">{user?.roles.join(", ")}</p>
+              <p className="text-sm font-medium text-gray-900 dark:text-gray-100">{user?.displayName}</p>
+              <p className="text-xs text-gray-500 dark:text-gray-400">{user?.roles.join(", ")}</p>
             </div>
           </div>
           <button
+            onClick={toggleTheme}
+            className="mt-1 flex w-full items-center gap-3 rounded-lg px-3 py-2 text-sm text-gray-600 hover:bg-gray-100 hover:text-gray-900 dark:text-gray-300 dark:hover:bg-gray-800 dark:hover:text-white"
+          >
+            {theme === "dark" ? <Sun size={18} /> : <Moon size={18} />}
+            {theme === "dark" ? "Light mode" : "Dark mode"}
+          </button>
+          <button
             onClick={logout}
-            className="mt-1 flex w-full items-center gap-3 rounded-lg px-3 py-2 text-sm text-gray-600 hover:bg-red-50 hover:text-red-600"
+            className="mt-1 flex w-full items-center gap-3 rounded-lg px-3 py-2 text-sm text-gray-600 hover:bg-red-50 hover:text-red-600 dark:text-gray-300 dark:hover:bg-red-900/30 dark:hover:text-red-300"
           >
             <LogOut size={18} />
             Sign Out
@@ -139,16 +151,16 @@ export function AppLayout() {
 
       {/* Main content */}
       <div className="flex flex-1 flex-col overflow-hidden">
-        <header className="flex h-16 items-center gap-4 border-b bg-white px-4 lg:px-6">
-          <button onClick={() => setSidebarOpen(true)} className="lg:hidden">
+        <header className="flex h-16 items-center gap-4 border-b bg-white px-4 lg:px-6 dark:border-gray-800 dark:bg-gray-900">
+          <button onClick={() => setSidebarOpen(true)} className="lg:hidden text-gray-700 dark:text-gray-200">
             <Menu size={24} />
           </button>
-          <h2 className="text-lg font-semibold capitalize">
+          <h2 className="text-lg font-semibold capitalize text-gray-900 dark:text-gray-100">
             {location.pathname.split("/").filter(Boolean).pop()?.replace(/-/g, " ") ?? "Dashboard"}
           </h2>
         </header>
 
-        <main className="flex-1 overflow-y-auto p-4 lg:p-6">
+        <main className="flex-1 overflow-y-auto bg-gray-50 p-4 lg:p-6 dark:bg-gray-950">
           <Outlet />
         </main>
       </div>
