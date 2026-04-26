@@ -149,22 +149,22 @@ export function ManagerReports() {
           <p className="p-6 text-center text-gray-500">No data for this period.</p>
         ) : (
           <table className="w-full text-sm">
-            <thead>
+            <thead className="sticky top-0 z-10 bg-white shadow-sm">
               <tr className="border-b text-left text-xs uppercase tracking-wide text-gray-500">
-                <th className="p-3 font-medium">Employee</th>
-                <th className="p-3 font-medium">Department</th>
-                <th className="p-3 font-medium text-center">Total</th>
-                <th className="p-3 font-medium text-center">Present</th>
-                <th className="p-3 font-medium text-center">Sick</th>
-                <th className="p-3 font-medium text-center">Child Sick</th>
-                <th className="p-3 font-medium text-center">Vacation</th>
-                <th className="p-3 font-medium text-center">Reserves</th>
-                <th className="p-3 font-medium text-center">Half Day Off</th>
-                <th className="p-3 font-medium text-center">Work From Home</th>
-                <th className="p-3 font-medium text-center">Public Holiday</th>
-                <th className="p-3 font-medium text-center">Day Off</th>
-                <th className="p-3 font-medium text-center">Report Status</th>
-                <th className="p-3 font-medium text-center">Actions</th>
+                <th className="p-3 font-medium bg-white">Employee</th>
+                <th className="p-3 font-medium bg-white">Department</th>
+                <th className="p-3 font-medium text-center bg-white">Total</th>
+                <th className="p-3 font-medium text-center bg-white">Present</th>
+                <th className="p-3 font-medium text-center bg-white">Sick</th>
+                <th className="p-3 font-medium text-center bg-white">Child Sick</th>
+                <th className="p-3 font-medium text-center bg-white">Vacation</th>
+                <th className="p-3 font-medium text-center bg-white">Reserves</th>
+                <th className="p-3 font-medium text-center bg-white">Half Day Off</th>
+                <th className="p-3 font-medium text-center bg-white">Work From Home</th>
+                <th className="p-3 font-medium text-center bg-white">Public Holiday</th>
+                <th className="p-3 font-medium text-center bg-white">Day Off</th>
+                <th className="p-3 font-medium text-center bg-white">Report Status</th>
+                <th className="p-3 font-medium text-center bg-white">Actions</th>
               </tr>
             </thead>
             <tbody>
