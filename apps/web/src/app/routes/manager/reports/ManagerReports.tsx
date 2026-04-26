@@ -96,6 +96,15 @@ export function ManagerReports() {
     },
   });
 
+  const [revertTarget, setRevertTarget] = useState<any>(null);
+  const revertMut = useMutation({
+    mutationFn: (reportId: string) => api.post(`/monthly-reports/${reportId}/revert-approval`),
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ["monthly-reports"] });
+      setRevertTarget(null);
+    },
+  });
+
   return (
     <div className="mx-auto max-w-6xl">
       {/* Header + month nav */}
@@ -206,6 +215,13 @@ export function ManagerReports() {
                           Reject
                         </button>
                       </div>
+                    ) : row.status === "APPROVED" && row.reportId ? (
+                      <button
+                        onClick={() => setRevertTarget(row)}
+                        className="rounded bg-amber-100 px-2 py-1 text-xs font-medium text-amber-700 hover:bg-amber-200"
+                      >
+                        Revert Approval
+                      </button>
                     ) : ["DRAFT", "REJECTED"].includes(row.status ?? "DRAFT") ? (
                       <button
                         onClick={() => navigate(`/manager/create-report/${row.employeeId}?month=${m}&year=${y}`)}
@@ -256,6 +272,37 @@ export function ManagerReports() {
                 className="rounded-lg bg-red-600 px-4 py-2 text-sm font-medium text-white hover:bg-red-700 disabled:opacity-50"
               >
                 {rejectMut.isPending ? "Rejecting..." : "Reject Report"}
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* Revert Approval Modal */}
+      {revertTarget && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/40 p-4">
+          <div className="w-full max-w-md rounded-2xl bg-white p-6 shadow-xl">
+            <h4 className="mb-3 text-lg font-semibold">Revert Approval</h4>
+            <p className="mb-3 text-sm text-gray-500">
+              This will reopen <strong>{revertTarget.employeeName ?? revertTarget.name}</strong>'s report so they can edit and resubmit it.
+              The employee will be notified that their report needs revisions.
+            </p>
+            {revertMut.isError && (
+              <p className="mt-2 text-sm text-red-600">{(revertMut.error as Error).message}</p>
+            )}
+            <div className="mt-4 flex justify-end gap-3">
+              <button
+                onClick={() => setRevertTarget(null)}
+                className="rounded-lg border px-4 py-2 text-sm hover:bg-gray-50"
+              >
+                Cancel
+              </button>
+              <button
+                onClick={() => revertMut.mutate(revertTarget.reportId)}
+                disabled={revertMut.isPending}
+                className="rounded-lg bg-amber-600 px-4 py-2 text-sm font-medium text-white hover:bg-amber-700 disabled:opacity-50"
+              >
+                {revertMut.isPending ? "Reverting..." : "Revert Approval"}
               </button>
             </div>
           </div>

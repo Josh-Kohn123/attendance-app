@@ -481,6 +481,73 @@ export async function monthlyReportRoutes(app: FastifyInstance) {
     }
   );
 
+  /**
+   * POST /monthly-reports/:id/revert-approval — Manager reverts an approved report back to REJECTED
+   * so the employee can edit and resubmit. Auto-fills a rejection reason and re-uses the rejection
+   * notification path. Clears reviewer/lock fields so the report doesn't look mid-review.
+   */
+  app.post(
+    "/:id/revert-approval",
+    { preHandler: [requirePermission("reports.review")] },
+    async (request, reply) => {
+      const { id } = request.params as { id: string };
+
+      const report = await prisma.monthlyReport.findUnique({
+        where: { id },
+        include: { employee: true },
+      });
+
+      if (!report || report.orgId !== request.currentOrgId!) {
+        return reply.status(404).send({ ok: false, error: { code: "NOT_FOUND", message: "Report not found" } });
+      }
+
+      if (report.status !== "APPROVED") {
+        return reply.status(400).send({
+          ok: false,
+          error: { code: "INVALID_STATUS", message: `Cannot revert — report is ${report.status.toLowerCase()}, not approved` },
+        });
+      }
+
+      const autoComment = "Admin reopened your report for revisions";
+
+      const updated = await prisma.monthlyReport.update({
+        where: { id },
+        data: {
+          status: "REJECTED",
+          reviewComment: autoComment,
+          reviewedAt: null,
+          reviewedById: null,
+          lockedAt: null,
+        },
+      });
+
+      // Re-use the rejection email so the employee sees the same "your report needs revisions" flow
+      const reviewer = await prisma.user.findUnique({ where: { id: request.currentUserId! } });
+      if (report.employee && reviewer) {
+        email.notifyMonthlyReportRejected({
+          orgId: request.currentOrgId!,
+          employeeEmail: report.employee.email,
+          employeeName: `${report.employee.firstName} ${report.employee.lastName}`,
+          month: report.month,
+          year: report.year,
+          reviewerName: reviewer.displayName,
+          comment: autoComment,
+        }).catch(() => {});
+      }
+
+      await auditLog(
+        request,
+        "MONTHLY_REPORT_APPROVAL_REVERTED",
+        "monthly_report",
+        id,
+        { status: "APPROVED" },
+        { status: "REJECTED", comment: autoComment }
+      );
+
+      return { ok: true, data: updated };
+    }
+  );
+
   // ──────────────────────────────────────────────────────────────────────────
   // Proxy endpoints — admin/manager creates & submits reports on behalf of employees
   // ──────────────────────────────────────────────────────────────────────────
