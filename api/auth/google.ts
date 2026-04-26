@@ -1,8 +1,9 @@
 import type { VercelRequest, VercelResponse } from "@vercel/node";
+import { getOAuthCallbackUrl } from "../../lib/oauth-url.js";
 
 export default async function handler(req: VercelRequest, res: VercelResponse) {
   const clientId = process.env.GOOGLE_CLIENT_ID;
-  const callbackUrl = process.env.GOOGLE_CALLBACK_URL ?? "http://localhost:3001/auth/google/callback";
+  const callbackUrl = getOAuthCallbackUrl(req);
 
   const params = new URLSearchParams({
     client_id: clientId ?? "",
