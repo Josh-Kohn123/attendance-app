@@ -512,7 +512,7 @@ export function CalendarPage() {
     for (const status of statusByDate.values()) {
       if (status === "PRESENT" || status === "WORK_FROM_HOME") worked++;
       else if (status === "VACATION") vacation++;
-      else if (status === "SICK") sick++;
+      else if (status === "SICK" || status === "CHILD_SICK") sick++;
     }
     return { worked, vacation, sick };
   }, [statusByDate]);
