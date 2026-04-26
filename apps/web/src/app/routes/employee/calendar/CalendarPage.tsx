@@ -13,6 +13,7 @@ import {
   AlertCircle,
   Clock,
   CheckCircle,
+  Loader2,
 } from "lucide-react";
 import clsx from "clsx";
 import dayjs from "dayjs";
@@ -346,7 +347,7 @@ export function CalendarPage() {
   const employeeDaysOff: string[] = user?.employee?.daysOff ?? [];
 
   // ── Fetch holidays for this period ──
-  const { data: holidays } = useQuery({
+  const { data: holidays, isPending: holidaysPending } = useQuery({
     queryKey: ["holidays", "dates", from, to],
     queryFn: () => api.get<any>(`/admin/holidays/dates?from=${from}&to=${to}`),
     enabled: !!from && !!to,
@@ -361,7 +362,7 @@ export function CalendarPage() {
   }, [holidays]);
 
   // ── Fetch attendance ──
-  const { data: attendance } = useQuery({
+  const { data: attendance, isPending: attendancePending } = useQuery({
     queryKey: ["attendance", "self", from, to],
     queryFn: () =>
       api.get<{ items: Array<{ serverTimestamp: string; notes: string | null }> }>(
@@ -369,6 +370,9 @@ export function CalendarPage() {
       ),
     enabled: !!from && !!to,
   });
+
+  // ── Initial load gate — prevents the "all-red unfilled" flash before data arrives ──
+  const isCalendarLoading = !!from && !!to && (holidaysPending || attendancePending);
 
   // ── Fetch report status ──
   const { data: reportStatus } = useQuery({
@@ -487,7 +491,9 @@ export function CalendarPage() {
   const [submitError, setSubmitError] = useState<string | null>(null);
 
   // ── Compute unfilled workdays for validation ──
+  // Returns empty while data is still loading so the grid doesn't flash red on first paint.
   const unfilledWorkdays = useMemo(() => {
+    if (isCalendarLoading) return new Set<string>();
     const missing: string[] = [];
     const today = dayjs();
     let cursor = dayjs(from);
@@ -508,7 +514,7 @@ export function CalendarPage() {
       cursor = cursor.add(1, "day");
     }
     return new Set(missing);
-  }, [statusByDate, from, to]);
+  }, [statusByDate, from, to, isCalendarLoading]);
 
   // ── Submit with validation ──
   const handleSubmitClick = () => {
@@ -674,15 +680,27 @@ export function CalendarPage() {
           )}
         </div>
 
-        {/* Day headers */}
-        <div className="mb-2 grid grid-cols-7 text-center text-xs font-medium text-gray-400">
-          {["Sun", "Mon", "Tue", "Wed", "Thu", "Fri", "Sat"].map((d) => (
-            <div key={d} className="py-1">{d}</div>
-          ))}
-        </div>
+        {/* Day headers + grid (relative wrapper so the loading curtain can overlay both) */}
+        <div className="relative">
+          {/* Day headers */}
+          <div className="mb-2 grid grid-cols-7 text-center text-xs font-medium text-gray-400">
+            {["Sun", "Mon", "Tue", "Wed", "Thu", "Fri", "Sat"].map((d) => (
+              <div key={d} className="py-1">{d}</div>
+            ))}
+          </div>
 
-        {/* Calendar grid */}
-        <div className="grid grid-cols-7 gap-1">
+          {/* Loading curtain — shown until holidays + attendance arrive */}
+          {isCalendarLoading && (
+            <div className="absolute inset-0 z-30 flex items-center justify-center rounded-xl bg-white/80 backdrop-blur-sm">
+              <div className="flex flex-col items-center gap-2 text-gray-500">
+                <Loader2 size={28} className="animate-spin" />
+                <span className="text-xs">Loading calendar…</span>
+              </div>
+            </div>
+          )}
+
+          {/* Calendar grid */}
+          <div className="grid grid-cols-7 gap-1">
           {days.map((day, i) => {
             if (!day) return <div key={`empty-${i}`} />;
 
@@ -752,6 +770,7 @@ export function CalendarPage() {
               </div>
             );
           })}
+          </div>
         </div>
 
         {/* Legend */}
