@@ -45,7 +45,7 @@ const STATUS_CONFIG: Record<
   VACATION:       { label: "Vacation",             bg: "bg-sky-100",    text: "text-sky-800",    dot: "bg-sky-500",    border: "border-sky-300"    },
   RESERVES:       { label: "Reserves",             bg: "bg-purple-100", text: "text-purple-800", dot: "bg-purple-500", border: "border-purple-300" },
   HALF_DAY:       { label: "Half Day Off",         bg: "bg-orange-100", text: "text-orange-800", dot: "bg-orange-500", border: "border-orange-300" },
-  WORK_FROM_HOME: { label: "WFH",                 bg: "bg-teal-100",   text: "text-teal-800",   dot: "bg-teal-500",   border: "border-teal-300"   },
+  WORK_FROM_HOME: { label: "Work From Home",       bg: "bg-teal-100",   text: "text-teal-800",   dot: "bg-teal-500",   border: "border-teal-300"   },
   PUBLIC_HOLIDAY: { label: "Holiday - Paid",       bg: "bg-indigo-100", text: "text-indigo-800", dot: "bg-indigo-500", border: "border-indigo-300" },
   PUBLIC_HOLIDAY_HALF: { label: "Holiday (Half)",   bg: "bg-indigo-50",  text: "text-indigo-700", dot: "bg-indigo-400", border: "border-indigo-200" },
   HOLIDAY_EVE:    { label: "Holiday Eve",          bg: "bg-indigo-50",  text: "text-indigo-700", dot: "bg-indigo-400", border: "border-indigo-200" },

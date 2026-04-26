@@ -160,7 +160,7 @@ export function ManagerReports() {
                 <th className="p-3 font-medium text-center">Vacation</th>
                 <th className="p-3 font-medium text-center">Reserves</th>
                 <th className="p-3 font-medium text-center">Half Day Off</th>
-                <th className="p-3 font-medium text-center">WFH</th>
+                <th className="p-3 font-medium text-center">Work From Home</th>
                 <th className="p-3 font-medium text-center">Public Holiday</th>
                 <th className="p-3 font-medium text-center">Day Off</th>
                 <th className="p-3 font-medium text-center">Report Status</th>
