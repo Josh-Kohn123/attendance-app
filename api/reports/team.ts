@@ -32,9 +32,37 @@ export default withAuth(
       },
     });
 
+    // Pull org public holidays in the same range — events on these dates are skipped
+    // so the report matches the calendar's auto-fill resolution (calendar shows the
+    // holiday and ignores any underlying VACATION/etc. event on that day).
+    const holidays = await prisma.holiday.findMany({
+      where: {
+        orgId: ctx.orgId,
+        date: { gte: new Date(from as string), lte: new Date(`${to}T23:59:59Z`) },
+      },
+      select: { date: true },
+    });
+    const holidayDateSet = new Set(holidays.map((h) => h.date.toISOString().slice(0, 10)));
+
+    // Day-of-week → weekday code, matches Employee.daysOff values
+    const DOW_TO_WEEKDAY: Record<number, string> = {
+      0: "SUN", 1: "MON", 2: "TUE", 3: "WED", 4: "THU", 5: "FRI", 6: "SAT",
+    };
+    const daysOffByEmp = new Map<string, string[]>(
+      employees.map((e) => [e.id, (e.daysOff as string[]) ?? []])
+    );
+
     // Group by employee and status (stored in notes field)
     const eventsByEmployee = new Map<string, { total: number; present: number; sick: number; childSick: number; vacation: number; reserves: number; halfDay: number; workFromHome: number; publicHoliday: number; holidayEve: number; choiceDay: number; advancedStudy: number; dayOff: number }>();
     for (const event of events) {
+      // Skip events on dates the calendar would auto-fill — public holidays for the
+      // org or weekly days off for this employee. Otherwise the report counts ghost
+      // events the user can't see in their calendar.
+      const dateStr = event.serverTimestamp.toISOString().slice(0, 10);
+      if (holidayDateSet.has(dateStr)) continue;
+      const weekday = DOW_TO_WEEKDAY[event.serverTimestamp.getUTCDay()];
+      if (weekday && (daysOffByEmp.get(event.employeeId) ?? []).includes(weekday)) continue;
+
       const existing = eventsByEmployee.get(event.employeeId) ?? { total: 0, present: 0, sick: 0, childSick: 0, vacation: 0, reserves: 0, halfDay: 0, workFromHome: 0, publicHoliday: 0, holidayEve: 0, choiceDay: 0, advancedStudy: 0, dayOff: 0 };
       const status = ((event.notes as string) ?? "PRESENT").toUpperCase();
       existing.total += 1;
