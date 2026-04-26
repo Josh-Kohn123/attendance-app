@@ -142,7 +142,7 @@ export function ManagerReports() {
       )}
 
       {/* Main table */}
-      <div className="overflow-x-auto rounded-xl bg-white shadow-sm">
+      <div className="rounded-xl bg-white shadow-sm">
         {isLoading ? (
           <p className="p-6 text-center text-gray-500">Loading...</p>
         ) : !mergedRows.length ? (
