@@ -39,7 +39,7 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
     const frontendUrl = process.env.CORS_ORIGIN ?? "http://localhost:5173";
 
     let user = await prisma.user.findFirst({
-      where: { email: userInfo.email, orgId: defaultOrgId },
+      where: { email: { equals: userInfo.email, mode: "insensitive" }, orgId: defaultOrgId },
       include: { userRoles: true },
     });
 

@@ -69,7 +69,7 @@ export async function authRoutes(app: FastifyInstance) {
       const defaultOrgId = process.env.DEFAULT_ORG_ID ?? "00000000-0000-0000-0000-000000000001";
 
       let user = await prisma.user.findFirst({
-        where: { email: userInfo.email, orgId: defaultOrgId },
+        where: { email: { equals: userInfo.email, mode: "insensitive" }, orgId: defaultOrgId },
         include: { userRoles: true },
       });
 
