@@ -621,6 +621,45 @@ export function CalendarPage() {
     setSelectedDates(new Set());
   }
 
+  // Pre-compute which dates in the period belong to each weekday and are
+  // candidates for selection (editable, not in the future, not auto-filled).
+  // Used by the clickable column headers for "select all Mondays" behavior.
+  const selectableDatesByWeekday = useMemo(() => {
+    const map: Record<number, string[]> = { 0: [], 1: [], 2: [], 3: [], 4: [], 5: [], 6: [] };
+    if (!isEditable) return map;
+    const today = dayjs();
+    for (const day of days) {
+      if (!day) continue;
+      if (day.isAfter(today, "day")) continue;
+      const dateStr = day.format("YYYY-MM-DD");
+      if (autoFilledDates.has(dateStr)) continue;
+      map[day.day()].push(dateStr);
+    }
+    return map;
+  }, [days, isEditable, autoFilledDates]);
+
+  // Click on a weekday column header → toggle all selectable dates of that weekday.
+  // Auto-enables multi-select mode so the bulk-apply bar appears immediately.
+  function handleWeekdayHeaderClick(dow: number) {
+    if (!isEditable) return;
+    const candidates = selectableDatesByWeekday[dow];
+    if (candidates.length === 0) return;
+    if (!multiSelectMode) {
+      setMultiSelectMode(true);
+      setOpenPickerDate(null);
+    }
+    setSelectedDates((prev) => {
+      const next = new Set(prev);
+      const allSelected = candidates.every((d) => next.has(d));
+      if (allSelected) {
+        for (const d of candidates) next.delete(d);
+      } else {
+        for (const d of candidates) next.add(d);
+      }
+      return next;
+    });
+  }
+
   return (
     <div className="mx-auto max-w-2xl">
       <div className="rounded-2xl bg-white p-6 shadow-sm">
@@ -710,11 +749,31 @@ export function CalendarPage() {
 
         {/* Day headers + grid (relative wrapper so the loading curtain can overlay both) */}
         <div className="relative">
-          {/* Day headers */}
+          {/* Day headers — clickable to toggle all of that weekday into multi-select */}
           <div className="mb-2 grid grid-cols-7 text-center text-xs font-medium text-gray-400">
-            {["Sun", "Mon", "Tue", "Wed", "Thu", "Fri", "Sat"].map((d) => (
-              <div key={d} className="py-1">{d}</div>
-            ))}
+            {["Sun", "Mon", "Tue", "Wed", "Thu", "Fri", "Sat"].map((d, dow) => {
+              const candidates = selectableDatesByWeekday[dow];
+              const interactive = isEditable && candidates.length > 0;
+              const allSelected = interactive && candidates.every((dt) => selectedDates.has(dt));
+              const someSelected = interactive && !allSelected && candidates.some((dt) => selectedDates.has(dt));
+              return (
+                <button
+                  key={d}
+                  type="button"
+                  onClick={() => handleWeekdayHeaderClick(dow)}
+                  disabled={!interactive}
+                  title={interactive ? `Select all ${d}s in this period` : undefined}
+                  className={clsx(
+                    "rounded py-1 transition-colors",
+                    interactive ? "cursor-pointer hover:bg-blue-50 hover:text-blue-700" : "cursor-default",
+                    allSelected && "bg-blue-600 text-white hover:bg-blue-600 hover:text-white",
+                    someSelected && "bg-blue-100 text-blue-700",
+                  )}
+                >
+                  {d}
+                </button>
+              );
+            })}
           </div>
 
           {/* Loading curtain — shown until holidays + attendance arrive */}
