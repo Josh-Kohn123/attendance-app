@@ -31,6 +31,7 @@ export default withAuth(async (req, res, ctx) => {
             position: user.employee.position,
             department: user.employee.department?.name ?? null,
             site: user.employee.site.name,
+            daysOff: user.employee.daysOff ?? [],
           }
         : null,
     },
