@@ -245,7 +245,16 @@ export async function reportRoutes(app: FastifyInstance) {
       const employees = await prisma.employee.findMany({
         where: empWhere,
         include: { department: true, site: true },
-        orderBy: { lastName: "asc" },
+      });
+
+      // Sort by employeeNumber (תג עובד) A→Z; rows without one sort last.
+      employees.sort((a: any, b: any) => {
+        const an = String(a.employeeNumber ?? "");
+        const bn = String(b.employeeNumber ?? "");
+        if (!an && !bn) return 0;
+        if (!an) return 1;
+        if (!bn) return -1;
+        return an.localeCompare(bn, undefined, { numeric: true, sensitivity: "base" });
       });
 
       const empIds = employees.map((e: any) => e.id);
@@ -379,7 +388,7 @@ export async function reportRoutes(app: FastifyInstance) {
         // ────────────────────────────────────────────────────
         const ws2 = wb.addWorksheet("report");
 
-        const summaryHeaders = ["שם עובד", "תג עובד", "ימי דיווח", "Vacation", "Military service", "Child sick", "Choice Day", "Advanced Study", "Half Day Off", "Sick day"];
+        const summaryHeaders = ["שם עובד", "תג עובד", "ימי דיווח", "Vacation", "Military service", "Child sick", "Choice Day", "Advanced Study", "Sick day"];
         const headerRow2 = ws2.addRow(summaryHeaders);
         headerRow2.font = { bold: true, name: "Arial" };
         headerRow2.eachCell((cell) => {
@@ -393,38 +402,38 @@ export async function reportRoutes(app: FastifyInstance) {
         let totalChildSick = 0;
         let totalChoiceDay = 0;
         let totalAdvancedStudy = 0;
-        let totalHalfDay = 0;
         let totalSick = 0;
+
+        const fmtCount = (n: number) => n > 0 ? (Number.isInteger(n) ? n + ".0" : String(n)) : "";
 
         for (const emp of employees) {
           const c = empSummary.get(emp.id) ?? { total: 0, present: 0, sick: 0, childSick: 0, vacation: 0, reserves: 0, halfDay: 0, workFromHome: 0, publicHoliday: 0, holidayEve: 0, choiceDay: 0, advancedStudy: 0, dayOff: 0 };
           const attendanceDays = c.total;
+          // Half days count as 0.5 of a vacation day and are folded into the Vacation total.
+          const vacationCombined = c.vacation + c.halfDay * 0.5;
 
-          totalVacation += c.vacation;
+          totalVacation += vacationCombined;
           totalReserves += c.reserves;
           totalChildSick += c.childSick;
           totalChoiceDay += c.choiceDay;
           totalAdvancedStudy += c.advancedStudy;
-          totalHalfDay += c.halfDay;
           totalSick += c.sick;
 
-          const fmtCount = (n: number) => n > 0 ? (Number.isInteger(n) ? n + ".0" : String(n)) : "";
           ws2.addRow([
             `${emp.lastName} ${emp.firstName}`,
             (emp as any).employeeNumber ?? "",
             attendanceDays,
-            fmtCount(c.vacation),
+            fmtCount(vacationCombined),
             fmtCount(c.reserves),
             fmtCount(c.childSick),
             fmtCount(c.choiceDay),
             fmtCount(c.advancedStudy),
-            fmtCount(c.halfDay),
             fmtCount(c.sick),
           ]);
         }
 
         // Totals row (no sum for שם עובד, תג עובד, ימי דיווח)
-        const totalsRow = ws2.addRow(["", "", "", totalVacation, totalReserves, totalChildSick, totalChoiceDay, totalAdvancedStudy, totalHalfDay, totalSick]);
+        const totalsRow = ws2.addRow(["", "", "", totalVacation, totalReserves, totalChildSick, totalChoiceDay, totalAdvancedStudy, totalSick]);
         totalsRow.font = { bold: true };
 
         // Auto-width columns for summary
@@ -527,8 +536,8 @@ export async function reportRoutes(app: FastifyInstance) {
           doc.fontSize(9).font("Helvetica").text(`Period: ${period}`, { align: "center" });
           doc.moveDown(0.5);
 
-          const sumCols = ["Employee", "Days", "Vacation", "Reserves", "Child Sick", "Choice Day", "Advanced Study", "Half Day Off", "Sick"];
-          const sumWidths = [130, 40, 50, 50, 55, 55, 60, 60, 40];
+          const sumCols = ["Employee", "Days", "Vacation", "Reserves", "Child Sick", "Choice Day", "Advanced Study", "Sick"];
+          const sumWidths = [130, 40, 50, 50, 55, 55, 60, 40];
 
           y = doc.y;
           doc.fontSize(8).font("Helvetica-Bold");
@@ -542,13 +551,15 @@ export async function reportRoutes(app: FastifyInstance) {
           y += 4;
 
           doc.font("Helvetica").fontSize(8);
-          let pdfTotalVacation = 0, pdfTotalReserves = 0, pdfTotalChildSick = 0, pdfTotalChoiceDay = 0, pdfTotalAdvancedStudy = 0, pdfTotalHalfDay = 0, pdfTotalSick = 0;
+          let pdfTotalVacation = 0, pdfTotalReserves = 0, pdfTotalChildSick = 0, pdfTotalChoiceDay = 0, pdfTotalAdvancedStudy = 0, pdfTotalSick = 0;
+          const fmtNum = (n: number) => Number.isInteger(n) ? String(n) : n.toFixed(1);
           for (const emp of employees) {
             if (y > 540) { doc.addPage(); y = 40; }
             const c = empSummary.get(emp.id) ?? { total: 0, present: 0, sick: 0, childSick: 0, vacation: 0, reserves: 0, halfDay: 0, workFromHome: 0, publicHoliday: 0, holidayEve: 0, choiceDay: 0, advancedStudy: 0, dayOff: 0 };
-            pdfTotalVacation += c.vacation; pdfTotalReserves += c.reserves; pdfTotalChildSick += c.childSick;
-            pdfTotalChoiceDay += c.choiceDay; pdfTotalAdvancedStudy += c.advancedStudy; pdfTotalHalfDay += c.halfDay; pdfTotalSick += c.sick;
-            const vals = [`${emp.lastName} ${emp.firstName}`, String(c.total), String(c.vacation), String(c.reserves), String(c.childSick), String(c.choiceDay), String(c.advancedStudy), String(c.halfDay), String(c.sick)];
+            const vacationCombined = c.vacation + c.halfDay * 0.5;
+            pdfTotalVacation += vacationCombined; pdfTotalReserves += c.reserves; pdfTotalChildSick += c.childSick;
+            pdfTotalChoiceDay += c.choiceDay; pdfTotalAdvancedStudy += c.advancedStudy; pdfTotalSick += c.sick;
+            const vals = [`${emp.lastName} ${emp.firstName}`, String(c.total), fmtNum(vacationCombined), String(c.reserves), String(c.childSick), String(c.choiceDay), String(c.advancedStudy), String(c.sick)];
             x = startX;
             for (let i = 0; i < vals.length; i++) {
               doc.text(vals[i], x, y, { width: sumWidths[i], align: "left" });
@@ -561,7 +572,7 @@ export async function reportRoutes(app: FastifyInstance) {
           if (y > 540) { doc.addPage(); y = 40; }
           y += 4;
           doc.font("Helvetica-Bold").fontSize(8);
-          const totalVals = ["", "", String(pdfTotalVacation), String(pdfTotalReserves), String(pdfTotalChildSick), String(pdfTotalChoiceDay), String(pdfTotalAdvancedStudy), String(pdfTotalHalfDay), String(pdfTotalSick)];
+          const totalVals = ["", "", fmtNum(pdfTotalVacation), String(pdfTotalReserves), String(pdfTotalChildSick), String(pdfTotalChoiceDay), String(pdfTotalAdvancedStudy), String(pdfTotalSick)];
           x = startX;
           for (let i = 0; i < totalVals.length; i++) {
             doc.text(totalVals[i], x, y, { width: sumWidths[i], align: "left" });
