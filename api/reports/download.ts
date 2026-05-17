@@ -245,7 +245,6 @@ export default withAuth(
         cell.alignment = { horizontal: "center" };
       });
 
-      const fmtDays = (n: number) => n % 1 === 0 ? n + ".0" : n.toFixed(1);
       const colTotals: Record<string, number> = Object.fromEntries(activeLeaveColumns.map((c) => [c, 0]));
 
       for (const { emp, values } of perEmp) {
@@ -253,13 +252,21 @@ export default withAuth(
         ws2.addRow([
           `${emp.lastName} ${emp.firstName}`,
           (emp as any).employeeNumber ?? "",
-          ...activeLeaveColumns.map((col) => fmtDays(values[col])),
+          ...activeLeaveColumns.map((col) => values[col]),
         ]);
       }
 
       // Totals row (no sum for שם עובד, תג עובד)
       const totalsRow = ws2.addRow(["", "", ...activeLeaveColumns.map((col) => colTotals[col])]);
       totalsRow.font = { bold: true };
+
+      // Apply numeric format ("0.0") to all leave-day columns so values render
+      // as numbers (e.g., 1.0, 2.5) rather than text.
+      for (let i = 0; i < activeLeaveColumns.length; i++) {
+        const col = ws2.getColumn(3 + i);
+        col.numFmt = "0.0";
+        col.alignment = { horizontal: "center" };
+      }
 
       // Auto-width columns for summary
       ws2.columns.forEach((col) => {
