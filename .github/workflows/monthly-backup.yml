@@ -1,0 +1,53 @@
+name: Monthly Database Backup
+
+on:
+  schedule:
+    # 03:00 UTC on the 1st of every month
+    - cron: "0 3 1 * *"
+  workflow_dispatch: {} # allow manual trigger from the GitHub UI
+
+jobs:
+  backup:
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    permissions:
+      contents: read
+
+    steps:
+      - name: Check out repo
+        uses: actions/checkout@v4
+
+      - name: Install Postgres 18 client (pg_dump)
+        run: |
+          sudo install -d /usr/share/postgresql-common/pgdg
+          sudo curl -fsSL https://www.postgresql.org/media/keys/ACCC4CF8.asc \
+            -o /usr/share/postgresql-common/pgdg/apt.postgresql.org.asc
+          sudo sh -c 'echo "deb [signed-by=/usr/share/postgresql-common/pgdg/apt.postgresql.org.asc] https://apt.postgresql.org/pub/repos/apt $(lsb_release -cs)-pgdg main" > /etc/apt/sources.list.d/pgdg.list'
+          sudo apt-get update
+          sudo apt-get install -y postgresql-client-18
+          pg_dump --version
+
+      - name: Set up Node
+        uses: actions/setup-node@v4
+        with:
+          node-version: "20"
+          cache: "npm"
+
+      - name: Install only what the upload script needs
+        run: npm install --no-save googleapis tsx
+
+      - name: Run pg_dump
+        env:
+          DATABASE_URL: ${{ secrets.DATABASE_URL }}
+        run: |
+          TIMESTAMP=$(date -u +%Y-%m-%d)
+          OUT="orbs-db-backup-${TIMESTAMP}.sql.gz"
+          echo "OUTFILE=${OUT}" >> "$GITHUB_ENV"
+          pg_dump "$DATABASE_URL" --no-owner --no-acl --format=plain | gzip > "$OUT"
+          ls -lh "$OUT"
+
+      - name: Upload to Google Drive
+        env:
+          GOOGLE_SERVICE_ACCOUNT_JSON: ${{ secrets.GOOGLE_SERVICE_ACCOUNT_JSON }}
+          DRIVE_FOLDER_ID: ${{ secrets.DRIVE_FOLDER_ID }}
+        run: npx tsx scripts/backup-to-drive.ts "$OUTFILE"
