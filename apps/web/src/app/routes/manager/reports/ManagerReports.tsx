@@ -4,7 +4,8 @@ import { useNavigate } from "react-router-dom";
 import { api } from "../../../../api/client";
 import { getReportingPeriod } from "@orbs/shared";
 import dayjs from "dayjs";
-import { CheckCircle, Clock, AlertCircle, User, PenLine } from "lucide-react";
+import { CheckCircle, Clock, AlertCircle, User, PenLine, CalendarDays } from "lucide-react";
+import { EmployeeCalendarModal } from "./EmployeeCalendarModal";
 
 /* ── helpers ─────────────────────────────────────────────────────── */
 
@@ -95,6 +96,8 @@ export function ManagerReports() {
       setRejectComment("");
     },
   });
+
+  const [calendarTarget, setCalendarTarget] = useState<any>(null);
 
   const [revertTarget, setRevertTarget] = useState<any>(null);
   const revertMut = useMutation({
@@ -199,40 +202,50 @@ export function ManagerReports() {
                     <ReportStatusBadge status={row.status ?? "DRAFT"} />
                   </td>
                   <td className="p-3 text-center">
-                    {row.status === "SUBMITTED" && row.reportId ? (
-                      <div className="flex items-center justify-center gap-1">
-                        <button
-                          onClick={() => approveMut.mutate(row.reportId)}
-                          disabled={approveMut.isPending}
-                          className="rounded bg-green-600 px-2 py-1 text-xs font-medium text-white hover:bg-green-700 disabled:opacity-50"
-                        >
-                          Approve
-                        </button>
-                        <button
-                          onClick={() => setRejectTarget(row)}
-                          className="rounded bg-red-100 px-2 py-1 text-xs font-medium text-red-700 hover:bg-red-200"
-                        >
-                          Reject
-                        </button>
-                      </div>
-                    ) : row.status === "APPROVED" && row.reportId ? (
+                    <div className="flex items-center justify-center gap-1">
                       <button
-                        onClick={() => setRevertTarget(row)}
-                        className="rounded bg-amber-100 px-2 py-1 text-xs font-medium text-amber-700 hover:bg-amber-200"
+                        onClick={() => setCalendarTarget(row)}
+                        title="View month calendar"
+                        aria-label={`View calendar for ${row.employeeName ?? row.name}`}
+                        className="rounded p-1.5 text-gray-500 hover:bg-gray-100 hover:text-primary-700 dark:text-gray-400 dark:hover:bg-gray-800 dark:hover:text-primary-300"
                       >
-                        Revert Approval
+                        <CalendarDays size={14} />
                       </button>
-                    ) : ["DRAFT", "REJECTED"].includes(row.status ?? "DRAFT") ? (
-                      <button
-                        onClick={() => navigate(`/manager/create-report/${row.employeeId}?month=${m}&year=${y}`)}
-                        className="inline-flex items-center gap-1 rounded bg-primary-600 px-2 py-1 text-xs font-medium text-white hover:bg-primary-700"
-                      >
-                        <PenLine size={12} />
-                        {(row.status ?? "DRAFT") === "REJECTED" ? "Edit" : "Create"}
-                      </button>
-                    ) : (
-                      <span className="text-gray-300">—</span>
-                    )}
+                      {row.status === "SUBMITTED" && row.reportId ? (
+                        <>
+                          <button
+                            onClick={() => approveMut.mutate(row.reportId)}
+                            disabled={approveMut.isPending}
+                            className="rounded bg-green-600 px-2 py-1 text-xs font-medium text-white hover:bg-green-700 disabled:opacity-50"
+                          >
+                            Approve
+                          </button>
+                          <button
+                            onClick={() => setRejectTarget(row)}
+                            className="rounded bg-red-100 px-2 py-1 text-xs font-medium text-red-700 hover:bg-red-200"
+                          >
+                            Reject
+                          </button>
+                        </>
+                      ) : row.status === "APPROVED" && row.reportId ? (
+                        <button
+                          onClick={() => setRevertTarget(row)}
+                          className="rounded bg-amber-100 px-2 py-1 text-xs font-medium text-amber-700 hover:bg-amber-200"
+                        >
+                          Revert Approval
+                        </button>
+                      ) : ["DRAFT", "REJECTED"].includes(row.status ?? "DRAFT") ? (
+                        <button
+                          onClick={() => navigate(`/manager/create-report/${row.employeeId}?month=${m}&year=${y}`)}
+                          className="inline-flex items-center gap-1 rounded bg-primary-600 px-2 py-1 text-xs font-medium text-white hover:bg-primary-700"
+                        >
+                          <PenLine size={12} />
+                          {(row.status ?? "DRAFT") === "REJECTED" ? "Edit" : "Create"}
+                        </button>
+                      ) : (
+                        <span className="text-gray-300">—</span>
+                      )}
+                    </div>
                   </td>
                 </tr>
               ))}
@@ -240,6 +253,31 @@ export function ManagerReports() {
           </table>
         )}
       </div>
+
+      {/* Employee calendar popup */}
+      {calendarTarget && (
+        <EmployeeCalendarModal
+          employeeId={calendarTarget.employeeId}
+          employeeName={calendarTarget.employeeName ?? calendarTarget.name ?? "Employee"}
+          departmentName={calendarTarget.departmentName ?? calendarTarget.department}
+          from={from}
+          to={to}
+          monthLabel={month.format("MMMM YYYY")}
+          monthStartDay={monthStartDay}
+          totals={{
+            present:       calendarTarget.present,
+            sick:          calendarTarget.sick,
+            childSick:     calendarTarget.childSick,
+            vacation:      calendarTarget.vacation,
+            reserves:      calendarTarget.reserves,
+            halfDay:       calendarTarget.halfDay,
+            workFromHome:  calendarTarget.workFromHome,
+            publicHoliday: calendarTarget.publicHoliday,
+            dayOff:        calendarTarget.dayOff,
+          }}
+          onClose={() => setCalendarTarget(null)}
+        />
+      )}
 
       {/* Reject Modal */}
       {rejectTarget && (
