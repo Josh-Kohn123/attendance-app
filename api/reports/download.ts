@@ -217,7 +217,26 @@ export default withAuth(
       // ────────────────────────────────────────────────────
       const ws2 = wb.addWorksheet("report");
 
-      const summaryHeaders = ["שם עובד", "תג עובד", "ימי דיווח", "Vacation", "Military service", "Child sick", "Choice Day", "Advanced Study", "Sick day"];
+      // Per-employee leave-type values (half days fold into Vacation as 0.5).
+      const perEmp = employees.map((emp) => {
+        const c = empSummary.get(emp.id) ?? { total: 0, present: 0, sick: 0, childSick: 0, vacation: 0, reserves: 0, halfDay: 0, workFromHome: 0, publicHoliday: 0, holidayEve: 0, choiceDay: 0, advancedStudy: 0, dayOff: 0 };
+        return {
+          emp,
+          values: {
+            Vacation: c.vacation + c.halfDay * 0.5,
+            "Military service": c.reserves,
+            "Child sick": c.childSick,
+            "Choice Day": c.choiceDay,
+            "Advanced Study": c.advancedStudy,
+            "Sick day": c.sick,
+          } as Record<string, number>,
+        };
+      });
+
+      const leaveColumns = ["Vacation", "Military service", "Child sick", "Choice Day", "Advanced Study", "Sick day"];
+      const activeLeaveColumns = leaveColumns.filter((col) => perEmp.some((r) => r.values[col] > 0));
+
+      const summaryHeaders = ["שם עובד", "תג עובד", ...activeLeaveColumns];
       const headerRow2 = ws2.addRow(summaryHeaders);
       headerRow2.font = { bold: true, name: "Arial" };
       headerRow2.eachCell((cell) => {
@@ -226,44 +245,28 @@ export default withAuth(
         cell.alignment = { horizontal: "center" };
       });
 
-      let totalVacation = 0;
-      let totalReserves = 0;
-      let totalChildSick = 0;
-      let totalChoiceDay = 0;
-      let totalAdvancedStudy = 0;
-      let totalSick = 0;
+      const colTotals: Record<string, number> = Object.fromEntries(activeLeaveColumns.map((c) => [c, 0]));
 
-      // Half days count as 0.5 of a vacation day and are folded into the Vacation total.
-      const fmtDays = (n: number) => n > 0 ? (n % 1 === 0 ? n + ".0" : n.toFixed(1)) : "";
-
-      for (const emp of employees) {
-        const c = empSummary.get(emp.id) ?? { total: 0, present: 0, sick: 0, childSick: 0, vacation: 0, reserves: 0, halfDay: 0, workFromHome: 0, publicHoliday: 0, holidayEve: 0, choiceDay: 0, advancedStudy: 0, dayOff: 0 };
-        const attendanceDays = c.total;
-        const vacationCombined = c.vacation + c.halfDay * 0.5;
-
-        totalVacation += vacationCombined;
-        totalReserves += c.reserves;
-        totalChildSick += c.childSick;
-        totalChoiceDay += c.choiceDay;
-        totalAdvancedStudy += c.advancedStudy;
-        totalSick += c.sick;
-
+      for (const { emp, values } of perEmp) {
+        for (const col of activeLeaveColumns) colTotals[col] += values[col];
         ws2.addRow([
           `${emp.lastName} ${emp.firstName}`,
           (emp as any).employeeNumber ?? "",
-          attendanceDays,
-          fmtDays(vacationCombined),
-          c.reserves > 0 ? String(c.reserves) + ".0" : "",
-          c.childSick > 0 ? String(c.childSick) + ".0" : "",
-          c.choiceDay > 0 ? String(c.choiceDay) + ".0" : "",
-          c.advancedStudy > 0 ? String(c.advancedStudy) + ".0" : "",
-          c.sick > 0 ? String(c.sick) + ".0" : "",
+          ...activeLeaveColumns.map((col) => values[col]),
         ]);
       }
 
-      // Totals row (no sum for שם עובד, תג עובד, ימי דיווח)
-      const totalsRow = ws2.addRow(["", "", "", totalVacation, totalReserves, totalChildSick, totalChoiceDay, totalAdvancedStudy, totalSick]);
+      // Totals row (no sum for שם עובד, תג עובד)
+      const totalsRow = ws2.addRow(["", "", ...activeLeaveColumns.map((col) => colTotals[col])]);
       totalsRow.font = { bold: true };
+
+      // Apply numeric format ("0.0") to all leave-day columns so values render
+      // as numbers (e.g., 1.0, 2.5) rather than text.
+      for (let i = 0; i < activeLeaveColumns.length; i++) {
+        const col = ws2.getColumn(3 + i);
+        col.numFmt = "0.0";
+        col.alignment = { horizontal: "center" };
+      }
 
       // Auto-width columns for summary
       ws2.columns.forEach((col) => {
@@ -362,8 +365,27 @@ export default withAuth(
         doc.fontSize(9).font("Helvetica").text(`Period: ${period}`, { align: "center" });
         doc.moveDown(0.5);
 
-        const sumCols = ["Employee", "Days", "Vacation", "Reserves", "Child Sick", "Choice Day", "Advanced Study", "Sick"];
-        const sumWidths = [130, 40, 50, 50, 55, 55, 60, 40];
+        const pdfPerEmp = employees.map((emp) => {
+          const c = empSummary.get(emp.id) ?? { total: 0, present: 0, sick: 0, childSick: 0, vacation: 0, reserves: 0, halfDay: 0, workFromHome: 0, publicHoliday: 0, holidayEve: 0, choiceDay: 0, advancedStudy: 0, dayOff: 0 };
+          return {
+            emp,
+            values: {
+              Vacation: c.vacation + c.halfDay * 0.5,
+              Reserves: c.reserves,
+              "Child Sick": c.childSick,
+              "Choice Day": c.choiceDay,
+              "Advanced Study": c.advancedStudy,
+              Sick: c.sick,
+            } as Record<string, number>,
+          };
+        });
+
+        const pdfLeaveColumns = ["Vacation", "Reserves", "Child Sick", "Choice Day", "Advanced Study", "Sick"];
+        const pdfWidthByCol: Record<string, number> = { Vacation: 50, Reserves: 50, "Child Sick": 55, "Choice Day": 55, "Advanced Study": 60, Sick: 40 };
+        const pdfActiveCols = pdfLeaveColumns.filter((col) => pdfPerEmp.some((r) => r.values[col] > 0));
+
+        const sumCols = ["Employee", ...pdfActiveCols];
+        const sumWidths = [130, ...pdfActiveCols.map((c) => pdfWidthByCol[c])];
 
         y = doc.y;
         doc.fontSize(8).font("Helvetica-Bold");
@@ -377,15 +399,12 @@ export default withAuth(
         y += 4;
 
         doc.font("Helvetica").fontSize(8);
-        let pdfTotalVacation = 0, pdfTotalReserves = 0, pdfTotalChildSick = 0, pdfTotalChoiceDay = 0, pdfTotalAdvancedStudy = 0, pdfTotalSick = 0;
-        const fmtNum = (n: number) => n % 1 === 0 ? String(n) : n.toFixed(1);
-        for (const emp of employees) {
+        const fmtNum = (n: number) => Number.isInteger(n) ? String(n) : n.toFixed(1);
+        const pdfTotals: Record<string, number> = Object.fromEntries(pdfActiveCols.map((c) => [c, 0]));
+        for (const { emp, values } of pdfPerEmp) {
           if (y > 540) { doc.addPage(); y = 40; }
-          const c = empSummary.get(emp.id) ?? { total: 0, present: 0, sick: 0, childSick: 0, vacation: 0, reserves: 0, halfDay: 0, workFromHome: 0, publicHoliday: 0, holidayEve: 0, choiceDay: 0, advancedStudy: 0, dayOff: 0 };
-          const vacationCombined = c.vacation + c.halfDay * 0.5;
-          pdfTotalVacation += vacationCombined; pdfTotalReserves += c.reserves; pdfTotalChildSick += c.childSick;
-          pdfTotalChoiceDay += c.choiceDay; pdfTotalAdvancedStudy += c.advancedStudy; pdfTotalSick += c.sick;
-          const vals = [`${emp.lastName} ${emp.firstName}`, String(c.total), fmtNum(vacationCombined), String(c.reserves), String(c.childSick), String(c.choiceDay), String(c.advancedStudy), String(c.sick)];
+          for (const col of pdfActiveCols) pdfTotals[col] += values[col];
+          const vals = [`${emp.lastName} ${emp.firstName}`, ...pdfActiveCols.map((col) => fmtNum(values[col]))];
           x = startX;
           for (let i = 0; i < vals.length; i++) {
             doc.text(vals[i], x, y, { width: sumWidths[i], align: "left" });
@@ -394,11 +413,11 @@ export default withAuth(
           y += 12;
         }
 
-        // Totals row (no sum for Employee or Days)
+        // Totals row (no sum for Employee)
         if (y > 540) { doc.addPage(); y = 40; }
         y += 4;
         doc.font("Helvetica-Bold").fontSize(8);
-        const totalVals = ["", "", fmtNum(pdfTotalVacation), String(pdfTotalReserves), String(pdfTotalChildSick), String(pdfTotalChoiceDay), String(pdfTotalAdvancedStudy), String(pdfTotalSick)];
+        const totalVals = ["", ...pdfActiveCols.map((col) => fmtNum(pdfTotals[col]))];
         x = startX;
         for (let i = 0; i < totalVals.length; i++) {
           doc.text(totalVals[i], x, y, { width: sumWidths[i], align: "left" });
