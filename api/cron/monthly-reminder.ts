@@ -18,6 +18,22 @@ import timezone from "dayjs/plugin/timezone.js";
 dayjs.extend(utc);
 dayjs.extend(timezone);
 
+async function withRetry<T>(fn: () => Promise<T>, attempts = 3, delayMs = 3000): Promise<T> {
+  let lastErr: unknown;
+  for (let i = 0; i < attempts; i++) {
+    try {
+      return await fn();
+    } catch (err) {
+      lastErr = err;
+      if (i < attempts - 1) {
+        console.warn(`[MonthlyReminder] DB attempt ${i + 1}/${attempts} failed, retrying in ${delayMs}ms`);
+        await new Promise((r) => setTimeout(r, delayMs));
+      }
+    }
+  }
+  throw lastErr;
+}
+
 export default async function handler(req: VercelRequest, res: VercelResponse) {
   // Verify the request is from Vercel Cron
   const authHeader = req.headers["authorization"];
@@ -28,9 +44,14 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
   const results: Array<{ org: string; emailsSent: number }> = [];
 
   try {
-    const orgs = await prisma.org.findMany({
-      select: { id: true, name: true, monthStartDay: true, timezone: true },
-    });
+    // Retry the first query: Neon compute can be suspended at cron firing
+    // time, and the wake-up handshake occasionally exceeds Prisma's default
+    // connect timeout. Subsequent queries reuse the warm connection.
+    const orgs = await withRetry(() =>
+      prisma.org.findMany({
+        select: { id: true, name: true, monthStartDay: true, timezone: true },
+      })
+    );
 
     for (const org of orgs) {
       const now = dayjs().tz(org.timezone);
