@@ -5,6 +5,7 @@ import { api } from "../../../../api/client";
 import {
   ChevronLeft,
   ChevronRight,
+  CalendarDays,
   X,
   CheckSquare,
   Square,
@@ -329,10 +330,159 @@ function ConfirmDialog({
   );
 }
 
+// ─── Shared Google Calendar (read-only) Popup ────────────────────────────────
+
+interface SharedCalEvent {
+  id: string;
+  title: string;
+  startDate: string; // inclusive YYYY-MM-DD
+  endDate: string;   // inclusive YYYY-MM-DD
+}
+
+// Read-only peek at the shared Google Calendar for the current period. The grid
+// is built with the SAME padding + 7-column layout as the fillable calendar so
+// every date lands in the exact same cell position — no confusion about which
+// day an event sits on.
+function SharedCalendarModal({
+  from, to, periodLabel, monthLabel, onClose,
+}: { from: string; to: string; periodLabel: string; monthLabel: string; onClose: () => void }) {
+  const { data, isLoading, isError } = useQuery({
+    queryKey: ["calendar", "shared-events", from, to],
+    queryFn: () => api.get<{ events: SharedCalEvent[] }>(`/calendar/events?from=${from}&to=${to}`),
+  });
+
+  const events = data?.events ?? [];
+
+  // Mirror the fillable calendar's day array (leading null padding so the first
+  // day falls on its correct weekday column).
+  const days = useMemo(() => {
+    const arr: (dayjs.Dayjs | null)[] = [];
+    const start = dayjs(from);
+    const end = dayjs(to);
+    for (let i = 0; i < start.day(); i++) arr.push(null);
+    let cursor = start;
+    while (cursor.isBefore(end) || cursor.isSame(end, "day")) {
+      arr.push(cursor);
+      cursor = cursor.add(1, "day");
+    }
+    return arr;
+  }, [from, to]);
+
+  // date → titles of every event spanning that day (inclusive range).
+  const eventsByDate = useMemo(() => {
+    const map = new Map<string, string[]>();
+    for (const e of events) {
+      let cursor = dayjs(e.startDate);
+      const end = dayjs(e.endDate);
+      while (cursor.isBefore(end) || cursor.isSame(end, "day")) {
+        const key = cursor.format("YYYY-MM-DD");
+        const list = map.get(key) ?? [];
+        list.push(e.title);
+        map.set(key, list);
+        cursor = cursor.add(1, "day");
+      }
+    }
+    return map;
+  }, [events]);
+
+  return (
+    <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/40 p-4" onClick={onClose}>
+      <div
+        className="flex max-h-[90vh] w-full max-w-2xl flex-col rounded-2xl bg-white p-6 shadow-xl dark:bg-gray-900 dark:shadow-black/50"
+        onClick={(e) => e.stopPropagation()}
+      >
+        {/* Header */}
+        <div className="mb-1 flex items-start justify-between">
+          <div>
+            <h3 className="text-lg font-semibold text-gray-900 dark:text-gray-100">Shared calendar — {monthLabel}</h3>
+            <p className="text-xs text-gray-500 dark:text-gray-400">{periodLabel}</p>
+          </div>
+          <button
+            onClick={onClose}
+            className="rounded-lg p-1.5 text-gray-400 hover:bg-gray-100 hover:text-gray-600 dark:hover:bg-gray-800"
+          >
+            <X size={18} />
+          </button>
+        </div>
+        <p className="mb-4 text-xs text-gray-400 dark:text-gray-500">
+          Read-only view of the shared Google Calendar for this period. Cells line up exactly with the calendar you fill out.
+        </p>
+
+        {isLoading ? (
+          <div className="flex h-48 items-center justify-center text-gray-500 dark:text-gray-300">
+            <Loader2 size={28} className="animate-spin" />
+          </div>
+        ) : isError ? (
+          <div className="flex h-48 items-center justify-center text-sm text-red-600">
+            Couldn't load shared-calendar events.
+          </div>
+        ) : (
+          <div className="overflow-y-auto">
+            {/* Weekday headers — identical to the fillable calendar */}
+            <div className="mb-2 grid grid-cols-7 text-center text-xs font-medium text-gray-400 dark:text-gray-500">
+              {["Sun", "Mon", "Tue", "Wed", "Thu", "Fri", "Sat"].map((d) => (
+                <div key={d} className="py-1">{d}</div>
+              ))}
+            </div>
+            {/* Grid */}
+            <div className="grid grid-cols-7 gap-1">
+              {days.map((day, i) => {
+                if (!day) return <div key={`empty-${i}`} />;
+                const dateStr = day.format("YYYY-MM-DD");
+                const titles = eventsByDate.get(dateStr) ?? [];
+                const weekend = day.day() === 5 || day.day() === 6;
+                const today = day.isSame(dayjs(), "day");
+                return (
+                  <div
+                    key={dateStr}
+                    className={clsx(
+                      "flex min-h-[3.5rem] flex-col rounded-xl p-1.5",
+                      weekend ? "bg-gray-50 dark:bg-gray-800/50" : "bg-gray-50/60 dark:bg-gray-800/30",
+                      today && "ring-2 ring-blue-400",
+                    )}
+                  >
+                    <span
+                      className={clsx(
+                        "text-xs font-medium leading-none",
+                        weekend ? "text-gray-400 dark:text-gray-500" : "text-gray-700 dark:text-gray-300",
+                      )}
+                    >
+                      {day.date()}
+                    </span>
+                    {titles.length > 0 && (
+                      <div className="mt-1 flex max-h-24 flex-col gap-0.5 overflow-y-auto">
+                        {titles.map((t, idx) => (
+                          <span
+                            key={idx}
+                            title={t}
+                            className="truncate rounded bg-blue-100 px-1 py-0.5 text-[10px] font-medium leading-tight text-blue-800 dark:bg-blue-900/50 dark:text-blue-200"
+                          >
+                            {t}
+                          </span>
+                        ))}
+                      </div>
+                    )}
+                  </div>
+                );
+              })}
+            </div>
+            {events.length === 0 && (
+              <p className="mt-4 text-center text-sm text-gray-400 dark:text-gray-500">
+                No shared-calendar events in this period.
+              </p>
+            )}
+          </div>
+        )}
+      </div>
+    </div>
+  );
+}
+
 // ─── Main Calendar Page ───────────────────────────────────────────────────────
 
 export function CalendarPage() {
   const [currentMonth, setCurrentMonth] = useState(dayjs().startOf("month"));
+  const [showSharedCalendar, setShowSharedCalendar] = useState(false);
   const [multiSelectMode, setMultiSelectMode] = useState(false);
   const [selectedDates, setSelectedDates] = useState<Set<string>>(new Set());
   const [openPickerDate, setOpenPickerDate] = useState<string | null>(null);
@@ -725,6 +875,16 @@ export function CalendarPage() {
             </button>
           </div>
 
+          <div className="flex items-center gap-2">
+          <button
+            type="button"
+            onClick={() => setShowSharedCalendar(true)}
+            title="See the shared Google Calendar for this period"
+            className="flex items-center gap-1.5 rounded-lg bg-gray-100 px-3 py-1.5 text-sm font-medium text-gray-700 hover:bg-gray-200 dark:bg-gray-800 dark:text-gray-200 dark:hover:bg-gray-700"
+          >
+            <CalendarDays size={16} /> Shared calendar
+          </button>
+
           {isEditable && (
             <button
               onClick={() => {
@@ -747,6 +907,7 @@ export function CalendarPage() {
               <Lock size={14} /> Read-only
             </span>
           )}
+          </div>
         </div>
 
         {/* Day headers + grid (relative wrapper so the loading curtain can overlay both) */}
@@ -902,6 +1063,16 @@ export function CalendarPage() {
 
       {openPickerDate && (
         <div className="fixed inset-0 z-40" onClick={() => setOpenPickerDate(null)} />
+      )}
+
+      {showSharedCalendar && (
+        <SharedCalendarModal
+          from={from}
+          to={to}
+          periodLabel={periodLabel}
+          monthLabel={currentMonth.format("MMMM YYYY")}
+          onClose={() => setShowSharedCalendar(false)}
+        />
       )}
 
       <ConfirmDialog
